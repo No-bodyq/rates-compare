@@ -631,19 +631,19 @@ function Send() {
 
                 <div className="flex justify-between items-center mb-6">
                     <div className="flex-1 relative">
-                        <p className="text-sm text-gray-600 mb-2">When sending</p>
+                        <p className="text-sm text-gray-600 mb-2 text-black">When sending</p>
                         <div
-                            className="flex items-center gap-2 bg-gray-100 rounded-lg p-3 cursor-pointer hover:bg-gray-200 transition-colors"
+                            className="flex items-center text-black gap-2 bg-gray-100 rounded-lg p-3 cursor-pointer hover:bg-gray-200 transition-colors"
                             onClick={() => setShowSourceList(true)}
                         >
                             <span className="text-2xl text-black">{currencyMap[sourceCurrency]?.flag}</span>
                             <span className="font-semibold text-black">
                                 {baseValue || "1000"} {sourceCurrency}
                             </span>
-                            <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />
+                            <ChevronDown className="w-4  h-4 text-gray-400 ml-auto" />
                         </div>
                         {showSourceList && (
-                            <div className="absolute left-0 mt-1 w-64 border border-gray-200 rounded-md bg-white shadow-lg z-30 max-h-48 overflow-y-auto">
+                            <div className="text-black absolute left-0 mt-1 w-64 border border-gray-200 rounded-md bg-white shadow-lg z-30 max-h-48 overflow-y-auto">
                                 {map(sourceCurrencies, (currency) => (
                                     <div
                                         key={currency}
