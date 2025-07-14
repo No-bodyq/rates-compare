@@ -1144,7 +1144,7 @@ function Send() {
                 </div>
 
                 <div className="mt-6">
-                    <button
+                    {/* <button
                         onClick={handleContinue}
                         disabled={
                             isLoadingRate ||
@@ -1158,7 +1158,7 @@ function Send() {
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl p-3 transition-colors disabled:opacity-50"
                     >
                         Continue
-                    </button>
+                    </button> */}
                 </div>
             </div>
         );
