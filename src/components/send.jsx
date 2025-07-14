@@ -624,8 +624,8 @@ function Send() {
                     <button
                         onClick={() => setActiveView("send")}
                         className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeView === "send"
-                                ? "bg-white text-blue-600 shadow-sm"
-                                : "text-gray-600 hover:text-gray-800"
+                            ? "bg-white text-blue-600 shadow-sm"
+                            : "text-gray-600 hover:text-gray-800"
                             }`}
                     >
                         Rate Calculator
@@ -633,8 +633,8 @@ function Send() {
                     <button
                         onClick={() => setActiveView("rates")}
                         className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeView === "rates"
-                                ? "bg-white text-blue-600 shadow-sm"
-                                : "text-gray-600 hover:text-gray-800"
+                            ? "bg-white text-blue-600 shadow-sm"
+                            : "text-gray-600 hover:text-gray-800"
                             }`}
                     >
                         Compare Rates
@@ -678,8 +678,8 @@ function Send() {
                         <button
                             onClick={handleCurrencySwap}
                             className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isSwapAllowed
-                                    ? "bg-gray-200 hover:bg-gray-300 cursor-pointer"
-                                    : "bg-gray-100 cursor-not-allowed opacity-50"
+                                ? "bg-gray-200 hover:bg-gray-300 cursor-pointer"
+                                : "bg-gray-100 cursor-not-allowed opacity-50"
                                 }`}
                             title={
                                 isSwapAllowed
@@ -851,8 +851,8 @@ function Send() {
                     <button
                         onClick={() => setActiveView("send")}
                         className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeView === "send"
-                                ? "bg-white text-blue-600 shadow-sm"
-                                : "text-gray-600 hover:text-gray-800"
+                            ? "bg-white text-blue-600 shadow-sm"
+                            : "text-gray-600 hover:text-gray-800"
                             }`}
                     >
                         Rate Calculator
@@ -860,8 +860,8 @@ function Send() {
                     <button
                         onClick={() => setActiveView("rates")}
                         className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeView === "rates"
-                                ? "bg-white text-blue-600 shadow-sm"
-                                : "text-gray-600 hover:text-gray-800"
+                            ? "bg-white text-blue-600 shadow-sm"
+                            : "text-gray-600 hover:text-gray-800"
                             }`}
                     >
                         Compare Rates
@@ -891,8 +891,8 @@ function Send() {
                                 setShowSourceList(!showSourceList)
                             }
                             className={`flex items-center justify-between rounded-md bg-white h-full min-w-[120px] px-3 ${isLoadingRate || rateRequestInProgress.current
-                                    ? "opacity-50 cursor-not-allowed"
-                                    : "cursor-pointer hover:bg-gray-50"
+                                ? "opacity-50 cursor-not-allowed"
+                                : "cursor-pointer hover:bg-gray-50"
                                 }`}
                             disabled={isLoadingRate || rateRequestInProgress.current}
                             type="button"
@@ -987,8 +987,8 @@ function Send() {
                                 setShowTargetList(!showTargetList)
                             }
                             className={`flex items-center justify-between rounded-md bg-white h-full min-w-[120px] px-3 ${isLoadingRate || rateRequestInProgress.current
-                                    ? "opacity-50 cursor-not-allowed"
-                                    : "cursor-pointer hover:bg-gray-50"
+                                ? "opacity-50 cursor-not-allowed"
+                                : "cursor-pointer hover:bg-gray-50"
                                 }`}
                             disabled={isLoadingRate || rateRequestInProgress.current}
                             type="button"
@@ -1051,13 +1051,31 @@ function Send() {
     return (
         <div className="w-screen lg:w-full h-full flex justify-center items-center">
             <div className="w-full lg:w-3/5 h-full flex flex-col gap-10">
-                <div className="flex flex-col items-center justify-between">
+                {/* <div className="flex flex-col items-center justify-between">
                     <div className="w-full flex flex-row justify-center items-center z-20">
                         <h1 className="text-gray-300 text-6xl font-bold">Powered by</h1>
                         <Image src="/PCXLogo.png" width={300} height={20} alt="logo" />
                         <br />
                     </div>
                     <h3 className="text-gray-300 text-xl text-center">
+                        Send money worldwide with ease, speed, and security.
+                    </h3>
+                </div> */}
+                <div className="flex flex-col items-center justify-center gap-4 p-4 sm:p-6">
+                    <div className="flex flex-row flex-wrap justify-center items-center gap-2 sm:gap-4 w-full max-w-3xl z-20">
+                        <h1 className="text-gray-300 text-4xl sm:text-5xl lg:text-6xl font-bold text-center">
+                            Powered by
+                        </h1>
+                        <Image
+                            src="/PCXLogo.png"
+                            width={0}
+                            height={0}
+                            sizes="(max-width: 640px) 192px, (max-width: 1024px) 256px, 320px"
+                            className="w-48 sm:w-64 lg:w-80 h-auto"
+                            alt="PCX Logo"
+                        />
+                    </div>
+                    <h3 className="text-gray-300 text-base sm:text-lg lg:text-xl text-center max-w-2xl">
                         Send money worldwide with ease, speed, and security.
                     </h3>
                 </div>
