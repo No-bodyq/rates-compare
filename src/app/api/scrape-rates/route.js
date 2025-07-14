@@ -58,7 +58,6 @@ export async function GET(request) {
 
     console.log(`🔍 API Request: ${amount} ${base} → ${target}${onlySendwave ? ' (Sendwave only)' : ''}`);
 
-    // Validation
     if (!base || !target) {
       return NextResponse.json(
         { 
@@ -76,15 +75,11 @@ export async function GET(request) {
     // Choose method based on request
     let result;
     if (onlySendwave) {
-      console.log('🎯 Getting Sendwave rate only...');
       result = await scraper.getSendwaveRateOnly(base, target, amount);
     } else {
       console.log('📊 Getting all rates...');
       result = await scraper.scrapeAllRates(base, target, amount);
     }
-
-    console.log(`✅ Scraping completed: ${result.status}`);
-    console.log(`📊 Rates found: ${result.rates?.length || 0}`);
 
     return NextResponse.json({
       success: result.status === 'success',

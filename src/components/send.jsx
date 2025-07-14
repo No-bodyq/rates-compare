@@ -20,31 +20,114 @@ const currencyMap = {
     XOF: { flag: "🇨🇮", country: "Côte d'Ivoire" },
 };
 
+// Provider logos mapping
+const PROVIDER_LOGOS = {
+    'sendwave': '/sendwavelogo.png',
+    'nala': '/nalalogo.png',
+    'remitly': '/remi-logo.png',
+    'taptapsend': '/taptapsend-logo.png',
+    'fastforex': '/fastforex-logo.png',
+    'westernunion': '/western.png'
+};
+
+// Helper function to get provider logo
+const getProviderLogo = (providerName) => {
+    if (!providerName) return null;
+    
+    const normalizedName = providerName.toLowerCase().replace(/\s+/g, '');
+    
+    // Check for exact matches first
+    if (PROVIDER_LOGOS[normalizedName]) {
+        return PROVIDER_LOGOS[normalizedName];
+    }
+    
+    // Check for partial matches
+    for (const [key, logo] of Object.entries(PROVIDER_LOGOS)) {
+        if (normalizedName.includes(key) || key.includes(normalizedName)) {
+            return logo;
+        }
+    }
+    
+    return null;
+};
+
 // Split currencies into source (send) and target (receive)
 const sourceCurrencies = ["USD", "EUR", "GBP"];
 const targetCurrencies = Object.keys(currencyMap).filter(
     (currency) => !sourceCurrencies.includes(currency)
 );
 
-// Mock FormattedCurrencyInput component
+// Enhanced FormattedCurrencyInput component with comma formatting
 const FormattedCurrencyInput = ({
     value,
     onChange,
     placeholder,
     className,
     disabled,
-}) => (
-    <input
-        type="number"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={className}
-        disabled={disabled}
-        min="0"
-        step="0.01"
-    />
-);
+    readOnly = false,
+}) => {
+    const formatNumberWithCommas = (num) => {
+        if (!num || num === "") return "";
+        const number = parseFloat(num);
+        if (isNaN(number)) return "";
+        return number.toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    };
+
+    const handleInputChange = (e) => {
+        const inputValue = e.target.value;
+        // Remove commas and non-numeric characters except decimal point
+        const numericValue = inputValue.replace(/[^\d.]/g, '');
+        
+        // Prevent multiple decimal points
+        const parts = numericValue.split('.');
+        if (parts.length > 2) {
+            return; // Don't update if there are multiple decimal points
+        }
+        
+        onChange(numericValue);
+    };
+
+    if (readOnly) {
+        return (
+            <div className={className}>
+                {formatNumberWithCommas(value)}
+            </div>
+        );
+    }
+
+    // For the "You send" field, don't format while typing to avoid cursor issues
+    const displayValue = value || "";
+
+    return (
+        <input
+            type="text"
+            value={displayValue}
+            onChange={handleInputChange}
+            placeholder={placeholder}
+            className={className}
+            disabled={disabled}
+            onBlur={(e) => {
+                // Format with commas only when user finishes editing (onBlur)
+                if (e.target.value && !isNaN(parseFloat(e.target.value))) {
+                    const formatted = parseFloat(e.target.value).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                    // Don't trigger onChange again, just update display
+                    e.target.value = formatted;
+                }
+            }}
+            onFocus={(e) => {
+                // Remove commas when user starts editing
+                const numericValue = e.target.value.replace(/[^\d.]/g, '');
+                e.target.value = numericValue;
+            }}
+        />
+    );
+};
 
 // Debounce helper function
 const debounce = (func, wait) => {
@@ -754,6 +837,9 @@ function Send() {
                             if (rateData.status !== "success" || isNaN(rateData.amountReceived)) {
                                 return null;
                             }
+                            
+                            const providerLogo = getProviderLogo(rateData.provider);
+                            
                             return (
                                 <div
                                     key={rateData.uniqueId || `${rateData.provider}-${index}`}
@@ -761,13 +847,31 @@ function Send() {
                                     style={{ display: "flex", visibility: "visible" }}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <span className="text-2xl">{rateData.logo || "💱"}</span>
+                                        {providerLogo ? (
+                                            <div className="w-8 h-8 relative">
+                                                <Image
+                                                    src={providerLogo}
+                                                    alt={`${rateData.provider} logo`}
+                                                    width={32}
+                                                    height={32}
+                                                    className="object-contain rounded"
+                                                    onError={(e) => {
+                                                        console.log(`Failed to load logo for ${rateData.provider}`);
+                                                        e.target.style.display = 'none';
+                                                        e.target.nextSibling.style.display = 'inline';
+                                                    }}
+                                                />
+                                                <span className="text-2xl hidden">💱</span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-2xl">💱</span>
+                                        )}
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <p className="font-semibold text-gray-800">{rateData.provider}</p>
-                                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                                                    {rateData.sourceType || ""}
-                                                </span>
+                                                {/* <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                                    {rateData.sourceType}
+                                                </span> */}
                                             </div>
                                             <p className="text-xs text-gray-500">{rateData.rateTime}</p>
                                             {rateData.fees > 0 && (
@@ -799,23 +903,44 @@ function Send() {
 
                     {allRates
                         .filter((rate) => rate.status === "error")
-                        .map((errorRate, index) => (
-                            <div
-                                key={`error-${errorRate.provider}-${index}`}
-                                className="flex justify-between items-center p-4 bg-red-50 rounded-lg"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <span className="text-2xl">❌</span>
-                                    <div>
-                                        <p className="font-semibold text-red-800">{errorRate.provider}</p>
-                                        <p className="text-xs text-red-600">{errorRate.error}</p>
+                        .map((errorRate, index) => {
+                            const providerLogo = getProviderLogo(errorRate.provider);
+                            
+                            return (
+                                <div
+                                    key={`error-${errorRate.provider}-${index}`}
+                                    className="flex justify-between items-center p-4 bg-red-50 rounded-lg"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {providerLogo ? (
+                                            <div className="w-8 h-8 relative opacity-50">
+                                                <Image
+                                                    src={providerLogo}
+                                                    alt={`${errorRate.provider} logo`}
+                                                    width={32}
+                                                    height={32}
+                                                    className="object-contain rounded grayscale"
+                                                    onError={(e) => {
+                                                        e.target.style.display = 'none';
+                                                        e.target.nextSibling.style.display = 'inline';
+                                                    }}
+                                                />
+                                                <span className="text-2xl hidden">❌</span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-2xl">❌</span>
+                                        )}
+                                        <div>
+                                            <p className="font-semibold text-red-800">{errorRate.provider}</p>
+                                            <p className="text-xs text-red-600">{errorRate.error}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-sm text-red-600">Unavailable</p>
                                     </div>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-sm text-red-600">Unavailable</p>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                 </div>
 
                 <div className="mt-6">
@@ -953,15 +1078,21 @@ function Send() {
                         {isLoadingRate || rateRequestInProgress.current ? (
                             <div className="text-lg text-gray-400">0.00</div>
                         ) : (
-                            <div className="text-lg text-black">
-                                {targetValue || (baseValue && rate) ? 
-                                    parseFloat(targetValue || (parseFloat(baseValue) * rate).toFixed(2)).toLocaleString('en-US', {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2
-                                    }) : 
-                                    "0.00"
+                            <FormattedCurrencyInput
+                                value={
+                                    targetValue ||
+                                    (baseValue && rate
+                                        ? (parseFloat(baseValue) * rate).toFixed(2)
+                                        : "")
                                 }
-                            </div>
+                                onChange={handleTargetChange}
+                                placeholder="0.00"
+                                className="text-lg w-full text-black border-0 outline-none"
+                                disabled={
+                                    isLoadingRate || rateRequestInProgress.current || !targetCurrency
+                                }
+                                readOnly={false}
+                            />
                         )}
                     </div>
                     <div className="relative">
@@ -1045,7 +1176,7 @@ function Send() {
                             src="/PCXLogo.png"
                             width={0}
                             height={0}
-                            sizes="(max-width: 640px) 192px, (max-width: 1024px) 256px, 320px"
+                            sizes="(max-width: 340px) 192px, (max-width: 924px) 256px, 320px"
                             className="w-48 sm:w-64 lg:w-80 h-auto"
                             alt="PCX Logo"
                         />

@@ -58,80 +58,6 @@ class NalaRateScraperService {
     return this.currencyNormalizationMap[currency] || currency;
   }
 
-  // async initialize() {
-  //   if (this.browser && !this.browser.disconnected) {
-  //     return;
-  //   }
-
-  //   if (this.isInitializing) {
-  //     while (this.isInitializing) {
-  //       await new Promise(resolve => setTimeout(resolve, 100));
-  //     }
-  //     return;
-  //   }
-
-  //   this.isInitializing = true;
-
-  //   try {
-  //     console.log('🔧 Initializing browser...');
-
-  //     let browserOptions;
-
-  //     if (this.isServerless) {
-  //       // Serverless environment configuration (AWS Lambda, Vercel, etc.)
-  //       console.log('🔧 Configuring for serverless environment...');
-
-  //       browserOptions = {
-  //         args: [
-  //           ...chromium.args,
-  //           '--hide-scrollbars',
-  //           '--disable-web-security',
-  //           '--no-first-run',
-  //           '--no-default-browser-check',
-  //           '--disable-default-apps',
-  //           '--disable-popup-blocking',
-  //           '--disable-translate',
-  //           '--disable-background-timer-throttling',
-  //           '--disable-renderer-backgrounding',
-  //           '--disable-backgrounding-occluded-windows',
-  //           '--disable-ipc-flooding-protection',
-  //         ],
-  //         defaultViewport: chromium.defaultViewport,
-  //         executablePath: await chromium.executablePath(),
-  //         headless: chromium.headless,
-  //         ignoreHTTPSErrors: true,
-  //         timeout: 30000
-  //       };
-  //     } else {
-  //       // Local development environment
-  //       console.log('🔧 Configuring for local environment...');
-
-  //       browserOptions = {
-  //         headless: true,
-  //         args: [
-  //           '--no-sandbox',
-  //           '--disable-setuid-sandbox',
-  //           '--disable-dev-shm-usage',
-  //           '--disable-accelerated-2d-canvas',
-  //           '--no-first-run',
-  //           '--no-zygote',
-  //           '--disable-gpu'
-  //         ],
-  //         timeout: 30000
-  //       };
-  //     }
-
-  //     this.browser = await puppeteer.launch(browserOptions);
-  //     console.log('✅ Browser initialized successfully');
-
-  //   } catch (error) {
-  //     console.error('❌ Failed to initialize browser:', error);
-  //     throw error;
-  //   } finally {
-  //     this.isInitializing = false;
-  //   }
-  // }
-
   async initialize() {
     if (this.browser && !this.browser.disconnected) {
       return;
@@ -180,16 +106,9 @@ class NalaRateScraperService {
         // Local development - use system Chrome or downloaded Chrome
         console.log('🔧 Configuring for local environment...');
 
-        // Try to use the Chrome that Puppeteer downloaded
-        const os = require('os');
-        const path = require('path');
-
-        // Path where your Chrome is actually installed
-        const chromePath = path.join(os.homedir(), '.cache', 'puppeteer', 'chrome', 'mac_arm-138.0.7204.94', 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
-
+        // Let Puppeteer automatically find Chrome installation
         browserOptions = {
           headless: true,
-          executablePath: chromePath, // Explicitly set the path
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -197,17 +116,13 @@ class NalaRateScraperService {
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--disable-background-timer-throttling',
+            '--disable-renderer-backgrounding',
+            '--disable-backgrounding-occluded-windows'
           ],
           timeout: 30000
         };
-
-        // Fallback to system Chrome if the specific path doesn't work
-        const fs = require('fs');
-        if (!fs.existsSync(chromePath)) {
-          console.log('⚠️ Downloaded Chrome not found, trying system Chrome...');
-          delete browserOptions.executablePath; // Let Puppeteer find Chrome
-        }
       }
 
       this.browser = await puppeteer.launch(browserOptions);
@@ -824,299 +739,286 @@ class NalaRateScraperService {
           const rates = [];
           const debugInfo = [];
 
-          debugInfo.push('🔍 DEEP DEBUG: Starting rate extraction analysis...');
+          debugInfo.push('🔍 SIMPLIFIED RATE EXTRACTION: Starting...');
           const pageText = document.body.textContent || '';
           debugInfo.push(`📝 Page text length: ${pageText.length} characters`);
 
           // Check what currency is actually being shown on the page
           const actualToCurrency = (() => {
-            const rateDisplays = pageText.match(/1\s+[A-Z]{3}\s*≈\s*[\d,.]+\s+([A-Z]{3})/g) || [];
+            // Look for rate display patterns like "1 USD ≈ 147.50 KES"
+            const rateDisplays = pageText.match(/1\s+[A-Z]{3}\s*[≈=]\s*[\d,.]+\s+([A-Z]{3})/g) || [];
             if (rateDisplays.length > 0) {
-              const match = rateDisplays[0].match(/1\s+[A-Z]{3}\s*≈\s*[\d,.]+\s+([A-Z]{3})/);
+              const match = rateDisplays[0].match(/1\s+[A-Z]{3}\s*[≈=]\s*[\d,.]+\s+([A-Z]{3})/);
               return match ? match[1] : normalizedToCurrency;
             }
             return normalizedToCurrency;
           })();
 
-          debugInfo.push(`🔄 Target currency: ${toCurrency} → Normalized: ${normalizedToCurrency} → Actually shown: ${actualToCurrency}`);
-
-          // Use the currency that's actually shown on the page for extraction
+          debugInfo.push(`🔄 Target: ${toCurrency} → Normalized: ${normalizedToCurrency} → Actually shown: ${actualToCurrency}`);
           const currencyToExtract = actualToCurrency;
 
-          // Step 1: Extract rates from the "Compare rates" section with GMT+ filtering
-          debugInfo.push('🔍 DEBUG 1: Extracting rates from Compare rates section...');
-          const rateElements = Array.from(document.querySelectorAll(
-            '.hero_calc-wrap, .container-large, .n-hero_inner, [class*="rates"], [class*="calculator"], [class*="rate"], div, span, p'
-          ));
-          let foundRates = [];
+          // Enhanced provider variants with more comprehensive patterns
+          const providerVariants = {
+            'Nala': ['nala', 'nala.com'],
+            'Remitly': ['remitly', 'remitly.com', 'remitly.co.uk', 'remitly'],
+            'Sendwave': ['sendwave', 'send wave', 'sendwave.com', 'wave'],
+            'Western Union': ['western union', 'westernunion', 'western-union', 'wu', 'western', 'wu'],
+            'TapTapSend': ['taptapsend', 'taptap', 'tap tap send', 'tap-tap-send', 'taptap send'],
+            'Wise': ['wise', 'wise.com', 'transferwise', 'wise.co.uk'],
+            'Remit': ['remit', 'Remit'],
+            'MoneyGram': ['moneygram', 'money gram', 'moneygram.com'],
+            'Ria': ['ria', 'ria money', 'riamoney', 'ria.com'],
+            'WorldRemit': ['worldremit', 'world remit', 'worldremit.com'],
+            'Xoom': ['xoom', 'xoom.com', 'paypal xoom'],
+            'TransferGo': ['transfergo', 'transfer go', 'transfergo.com'],
+            'Azimo': ['azimo', 'azimo.com'],
+            'Small World': ['small world', 'smallworld', 'smallworldfs'],
+            'Paysend': ['paysend', 'paysend.com']
+          };
 
-          rateElements.forEach((el, index) => {
-            const text = el.textContent || '';
-            // Enhanced pattern to catch the currency that's actually shown
-            const allCurrencies = [...supportedCurrencies, 'KES', 'KSH'];
+          // STEP 1: Look for structured rate cards/containers
+          debugInfo.push('🔍 STEP 1: Looking for structured rate containers...');
+          
+          const rateContainers = document.querySelectorAll(`
+            [data-testid*="rate"], [data-testid*="provider"], [data-testid*="comparison"],
+            [class*="rate"], [class*="provider"], [class*="comparison"], [class*="card"],
+            .rate-card, .provider-card, .comparison-item, .rate-item,
+            div[class*="grid"] > div, section, article
+          `);
 
-            // Get all potential matches first
-            const allMatches = [...text.matchAll(new RegExp(`([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*(${allCurrencies.join('|')})`, 'gi'))];
+          debugInfo.push(`Found ${rateContainers.length} potential rate containers`);
 
-            // Filter out GMT+ timestamp matches and other time-related patterns
-            const matches = allMatches.filter(match => {
-              const matchIndex = text.indexOf(match[0]);
-              const beforeContext = text.substring(Math.max(0, matchIndex - 15), matchIndex);
+          rateContainers.forEach((container, index) => {
+            const containerText = container.textContent || '';
+            
+            // Skip very large containers (likely page containers)
+            if (containerText.length > 2000) {
+              debugInfo.push(`    Skipped container ${index} (too large: ${containerText.length} chars)`);
+              return;
+            }
+            
+            debugInfo.push(`    Container ${index}: ${containerText.length} chars, text: "${containerText.substring(0, 200)}..."`);
+          
+            
+            // Look for provider name in this container
+            let detectedProvider = null;
+            for (const [provider, variants] of Object.entries(providerVariants)) {
+              if (sendwaveOnly && provider !== 'Sendwave') continue;
+              
+              if (variants.some(variant => containerText.toLowerCase().includes(variant.toLowerCase()))) {
+                detectedProvider = provider;
+                debugInfo.push(`    Detected provider "${provider}" via pattern matching`);
+                break;
+              }
+            }
+            
+            // If no provider detected directly in container, look for rates first
+            // and try to infer provider from broader page context
+            if (!detectedProvider) {
+              // Check if this container has currency rates
+              const hasRates = new RegExp(`([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*${currencyToExtract}\\b`, 'gi').test(containerText);
+              
+              if (hasRates) {
+                // Look for provider mentions in nearby text or page context
+                // Get a larger context around this container
+                const containerIndex = Array.from(rateContainers).indexOf(container);
+                let contextText = containerText;
+                
+                // Add context from nearby containers
+                for (let i = Math.max(0, containerIndex - 2); i <= Math.min(rateContainers.length - 1, containerIndex + 2); i++) {
+                  if (i !== containerIndex) {
+                    const nearbyContainer = rateContainers[i];
+                    contextText += ' ' + (nearbyContainer.textContent || '');
+                  }
+                }
+                
+                // Try to find provider in expanded context
+                for (const [provider, variants] of Object.entries(providerVariants)) {
+                  if (sendwaveOnly && provider !== 'Sendwave') continue;
+                  
+                  if (variants.some(variant => contextText.toLowerCase().includes(variant.toLowerCase()))) {
+                    detectedProvider = provider;
+                    debugInfo.push(`    Detected provider "${provider}" via expanded context search`);
+                    break;
+                  }
+                }
+              }
+            }
 
-              // Skip if this appears to be part of a timestamp
-              return !beforeContext.includes('GMT+') &&
-                !beforeContext.includes('GMT ') &&
-                !beforeContext.includes('as of:') &&
-                !beforeContext.includes('UTC+') &&
-                !beforeContext.match(/\d{2}:\d{2}/) && // Skip time patterns like "09:34"
-                !beforeContext.match(/\d{1,2}:\d{2}/) && // Skip time patterns like "9:34"
-                !beforeContext.toLowerCase().includes('time') &&
-                !beforeContext.toLowerCase().includes('rate');
-            });
+            // If no provider detected, try to extract rates anyway and assign generic names
+            if (!detectedProvider) {
+              debugInfo.push(`    No provider detected in container ${index}`);
+              // Only skip if we're in sendwave-only mode and didn't detect sendwave
+              if (sendwaveOnly) {
+                debugInfo.push(`    Skipping container ${index} (sendwave-only mode, no sendwave detected)`);
+                return;
+              }
+              
+              // Assign a generic provider name based on container index
+              detectedProvider = `Provider-${index + 1}`;
+              debugInfo.push(`    Assigned generic provider: ${detectedProvider}`);
+            } else {
+              debugInfo.push(`    Detected provider: ${detectedProvider}`);
+            }
 
-            matches.forEach(match => {
-              if (match && match[1] && match[2]) {
-                const value = parseFloat(match[1].replace(/,/g, ''));
-                const currency = match[2].toUpperCase();
+            // Look for rates in this container
+            const ratePatterns = [
+              // Match numbers followed by currency code (e.g., "147.50 KES", "147,500 KES")
+              new RegExp(`([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*${currencyToExtract}\\b`, 'gi'),
+              // Also try with spaces
+              new RegExp(`([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s+${currencyToExtract}\\b`, 'gi')
+            ];
 
-                const context = text.substring(
-                  Math.max(0, text.indexOf(match[0]) - 100),
-                  Math.min(text.length, text.indexOf(match[0]) + match[0].length + 100)
+            let containerRates = [];
+            
+            ratePatterns.forEach(pattern => {
+              const matches = [...containerText.matchAll(pattern)];
+              matches.forEach(match => {
+                const rateValue = parseFloat(match[1].replace(/,/g, ''));
+                
+                // Get context around the match
+                const matchIndex = containerText.indexOf(match[0]);
+                const context = containerText.substring(
+                  Math.max(0, matchIndex - 50),
+                  Math.min(containerText.length, matchIndex + 50)
                 );
 
-                // Additional validation: Skip if context suggests this is timestamp-related
-                if (context.includes('GMT+') || context.includes('as of:') || context.includes('UTC+')) {
-                  debugInfo.push(`   Skipped timestamp-related match: ${value} ${currency} (context contains GMT/UTC)`);
+                // Skip timestamp-related matches - but be more precise
+                // Only skip if the number appears to BE the timestamp, not just near one
+                const isActualTimestamp = (
+                  context.match(/\d{2}:\d{2}/) && 
+                  Math.abs(context.indexOf(match[0]) - context.search(/\d{2}:\d{2}/)) < 10
+                ) || (
+                  context.includes('GMT+') && 
+                  Math.abs(context.indexOf(match[0]) - context.indexOf('GMT+')) < 15 &&
+                  rateValue < 100 // Timezone offset numbers are small
+                );
+                
+                if (isActualTimestamp) {
+                  debugInfo.push(`    Skipped ${rateValue} (is actual timestamp)`);
                   return;
                 }
 
-                foundRates.push({
-                  rate: value,
-                  rawValue: match[1],
-                  currency: currency,
-                  context: context,
-                  elementIndex: index,
-                  elementTag: el.tagName,
-                  elementClass: el.className || ''
-                });
-                debugInfo.push(`   Potential rate: ${value} ${currency} (from: "${match[0]}", tag: ${el.tagName}, class: ${el.className}, context: "...${context.substring(0, 100)}...")`);
-              }
-            });
-          });
+                // Determine if this is an exchange rate or total amount
+                let finalRate = rateValue;
+                let recipientAmount = rateValue;
 
-          // Step 2: Filter rates based on the currency actually shown on the page
-          debugInfo.push('🔍 DEBUG 2: Filtering and normalizing rates...');
-          const validRates = foundRates.filter(rate => {
-            // Accept rates for the currency actually shown on the page
-            if (rate.currency !== currencyToExtract.toUpperCase()) {
-              return false;
-            }
+                if (rateValue > 20000) {
+                  // Very large number, likely a total amount
+                  finalRate = rateValue / amount;
+                  recipientAmount = rateValue;
+                } else if (rateValue >= 50 && rateValue <= 10000) {
+                  // Reasonable range for exchange rate
+                  recipientAmount = finalRate * amount;
+                } else {
+                  // Out of reasonable range
+                  return;
+                }
 
-            // Additional filter: Skip if context suggests this is from a timestamp
-            if (rate.context.includes('GMT+') || rate.context.includes('as of:') || rate.context.includes('UTC+')) {
-              return false;
-            }
-
-            // Check if it's a reasonable exchange rate (not a large total amount)
-            if (rate.rate >= 100 && rate.rate <= 5000) {
-              return true;
-            }
-            // Check if it might be a total amount that needs normalization
-            const normalizedRate = rate.rate / amount;
-            return normalizedRate >= 100 && normalizedRate <= 5000;
-          });
-
-          debugInfo.push(`   Found ${validRates.length} valid rates or recipient amounts for ${currencyToExtract}`);
-
-          // Step 3: Associate rates with providers
-          debugInfo.push('🔍 DEBUG 3: Associating rates with providers...');
-          const providerVariants = {
-            'Remitly': ['Remitly', 'remitly', 'REMITLY'],
-            'Sendwave': ['Sendwave', 'sendwave', 'SENDWAVE'],
-            'TapTapSend': ['TapTapSend', 'taptapsend', 'TAPTAPSEND', 'TapTap'],
-            'Nala': ['Nala', 'nala', 'NALA']
-          };
-
-          Object.entries(providerVariants).forEach(([provider, variants]) => {
-            if (sendwaveOnly && provider !== 'Sendwave') return;
-
-            debugInfo.push(`   Provider: ${provider}`);
-            let providerRates = [];
-
-            variants.forEach(variant => {
-              const indices = [];
-              let index = pageText.toLowerCase().indexOf(variant.toLowerCase());
-              while (index !== -1) {
-                indices.push(index);
-                index = pageText.toLowerCase().indexOf(variant.toLowerCase(), index + 1);
-              }
-
-              debugInfo.push(`     Variant "${variant}" found at positions: [${indices.join(', ')}]`);
-
-              indices.forEach(pos => {
-                const context = pageText.substring(Math.max(0, pos - 200), Math.min(pageText.length, pos + 200));
-                validRates.forEach(rate => {
-                  if (context.includes(rate.rawValue) && rate.currency === currencyToExtract.toUpperCase()) {
-                    let finalRate = rate.rate;
-                    // If this looks like a total amount, normalize it
-                    if (rate.rate > 5000) {
-                      finalRate = rate.rate / amount;
-                    }
-                    if (finalRate >= 100 && finalRate <= 5000) {
-                      providerRates.push({
-                        rate: finalRate,
-                        rawValue: rate.rawValue,
-                        context: rate.context,
-                        totalAmount: rate.rate > 5000 ? rate.rate : finalRate * amount
-                      });
-                      debugInfo.push(`       Matched rate ${finalRate} ${currencyToExtract} for ${provider} (total: ${rate.rate > 5000 ? rate.rate : finalRate * amount}) (from: "${rate.rawValue}", context: "...${context.substring(0, 100)}...")`);
-                    }
-                  }
-                });
+                // Validate final rate
+                if (finalRate >= 50 && finalRate <= 10000) {
+                  containerRates.push({
+                    provider: detectedProvider,
+                    rate: finalRate,
+                    recipientReceives: recipientAmount,
+                    rawValue: match[1],
+                    context: context.trim()
+                  });
+                  
+                  debugInfo.push(`    Found rate for ${detectedProvider}: ${finalRate} → ${recipientAmount.toLocaleString()} ${currencyToExtract} (context: "${context}")`);
+                }
               });
             });
 
-            // Deduplicate provider rates
-            const uniqueProviderRates = [];
-            const seenRates = new Set();
-            providerRates.forEach(rate => {
-              const key = Math.round(rate.rate * 100); // Round to avoid floating point issues
-              if (!seenRates.has(key)) {
-                seenRates.add(key);
-                uniqueProviderRates.push({
-                  provider,
-                  rate: rate.rate,
-                  recipientReceives: rate.totalAmount || rate.rate * amount,
+            // Add the best rate for this provider
+            if (containerRates.length > 0) {
+              // Sort by recipient amount (highest first) and take the best one
+              containerRates.sort((a, b) => b.recipientReceives - a.recipientReceives);
+              const bestRate = containerRates[0];
+              
+              // Check if we already have this provider
+              const existingRate = rates.find(r => r.provider === bestRate.provider);
+              if (!existingRate || bestRate.recipientReceives > existingRate.recipientReceives) {
+                // Remove existing rate if this one is better
+                if (existingRate) {
+                  const index = rates.findIndex(r => r.provider === bestRate.provider);
+                  rates.splice(index, 1);
+                }
+                
+                rates.push({
+                  provider: bestRate.provider,
+                  rate: bestRate.rate,
+                  recipientReceives: bestRate.recipientReceives,
                   currency: currencyToExtract,
                   timestamp: new Date().toISOString(),
-                  extractedFrom: 'Compare rates section',
-                  rawValue: rate.rawValue
+                  extractedFrom: 'Structured container extraction',
+                  rawValue: bestRate.rawValue
                 });
               }
-            });
-
-            rates.push(...uniqueProviderRates);
+            }
           });
 
-          // Step 4: Fallback to rateDisplay for any missing rates
-          debugInfo.push('🔍 DEBUG 4: Checking rateDisplay for fallback rates...');
+          // STEP 2: Fallback - Look for rate display patterns
+          debugInfo.push('🔍 STEP 2: Fallback - Looking for rate display patterns...');
+          
           const rateDisplayPatterns = [
-            new RegExp(`1\\s+${fromCurrency}\\s*≈\\s*([\\d,.]+)\\s+${currencyToExtract}`, 'gi'),
-            new RegExp(`1\\s+${fromCurrency}\\s*≈\\s*([\\d,.]+)\\s+${toCurrency}`, 'gi'),
-            new RegExp(`1\\s+${fromCurrency}\\s*≈\\s*([\\d,.]+)\\s+${normalizedToCurrency}`, 'gi')
+            // Pattern like "1 USD ≈ 147.50 KES"
+            new RegExp(`1\\s+${fromCurrency}\\s*[≈=]\\s*([\\d,.]+)\\s+${currencyToExtract}`, 'gi'),
+            // Pattern like "USD to KES: 147.50"
+            new RegExp(`${fromCurrency}\\s+to\\s+${currencyToExtract}[:\\s]+([\\d,.]+)`, 'gi'),
+            // More generic patterns
+            new RegExp(`([\\d,.]+)\\s+${currencyToExtract}`, 'gi')
           ];
 
-          let allRateDisplays = [];
-          rateDisplayPatterns.forEach(pattern => {
+          rateDisplayPatterns.forEach((pattern, patternIndex) => {
             const matches = [...pageText.matchAll(pattern)];
-            allRateDisplays = allRateDisplays.concat(matches);
-          });
-
-          allRateDisplays.forEach(match => {
-            if (match && match[1]) {
-              const value = parseFloat(match[1].replace(/,/g, ''));
-              debugInfo.push(`   Processing rateDisplay: "${match[0]}", extracted value: ${value}`);
-              if (value >= 100 && value <= 5000) {
-                // Only add if we don't already have a rate for this provider
-                if (!sendwaveOnly && !rates.some(r => r.provider.toLowerCase().includes('nala'))) {
-                  rates.push({
-                    provider: 'Nala (fallback)',
-                    rate: value,
-                    recipientReceives: value * amount,
-                    currency: currencyToExtract,
-                    timestamp: new Date().toISOString(),
-                    extractedFrom: 'rateDisplay',
-                    rawValue: match[1]
-                  });
-                  debugInfo.push(`   Added fallback rate: ${value} ${currencyToExtract} (from: "${match[0]}")`);
-                } else {
-                  debugInfo.push(`   Skipped fallback rate ${value} ${currencyToExtract} (already have provider or sendwave-only mode)`);
-                }
-              } else {
-                debugInfo.push(`   Discarded rateDisplay value ${value} (out of reasonable range)`);
-              }
-            }
-          });
-
-          // Step 5: Extract total amounts and normalize if needed (with GMT+ filtering)
-          debugInfo.push('🔍 DEBUG 5: Normalizing rates from total amounts...');
-
-          // First get all potential matches
-          const allTotalMatches = [...pageText.matchAll(new RegExp(`([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{2})?)\\s*${currencyToExtract}`, 'gi'))];
-
-          // Filter out GMT+ and timestamp matches
-          const totalMatches = allTotalMatches.filter(match => {
-            const matchIndex = pageText.indexOf(match[0]);
-            const beforeContext = pageText.substring(Math.max(0, matchIndex - 15), matchIndex);
-            return !beforeContext.includes('GMT+') &&
-              !beforeContext.includes('GMT ') &&
-              !beforeContext.includes('as of:') &&
-              !beforeContext.includes('UTC+') &&
-              !beforeContext.match(/\d{2}:\d{2}/);
-          });
-
-          debugInfo.push(`   Found ${totalMatches.length} valid total amount matches for ${currencyToExtract} (filtered from ${allTotalMatches.length} total)`);
-
-          totalMatches.forEach(match => {
-            if (match && match[1]) {
-              const value = parseFloat(match[1].replace(/,/g, ''));
-              const normalizedRate = value / amount;
-
-              if (normalizedRate >= 100 && normalizedRate <= 5000 && value > 10000) { // Only normalize large amounts
+            debugInfo.push(`  Pattern ${patternIndex + 1}: found ${matches.length} matches`);
+            
+            matches.forEach(match => {
+              const rate = parseFloat(match[1].replace(/,/g, ''));
+              
+              // For generic pattern, we need to validate it's actually a rate
+              if (patternIndex === 2) {
+                // Check if this looks like a timestamp or other non-rate number
                 const context = pageText.substring(
-                  Math.max(0, pageText.indexOf(match[0]) - 100),
-                  Math.min(pageText.length, pageText.indexOf(match[0]) + match[0].length + 100)
+                  Math.max(0, pageText.indexOf(match[0]) - 50),
+                  Math.min(pageText.length, pageText.indexOf(match[0]) + 50)
                 );
-
-                // Skip if context suggests this is from a timestamp
-                if (context.includes('GMT+') || context.includes('as of:') || context.includes('UTC+')) {
-                  debugInfo.push(`   Skipped timestamp-related total: ${value} ${currencyToExtract}`);
-                  return;
+                
+                if (context.includes('GMT') || context.includes('UTC') || 
+                    context.includes('as of') || context.match(/\d{2}:\d{2}/)) {
+                  return; // Skip timestamp-related matches
                 }
-
-                debugInfo.push(`   Processing total: ${value} ${currencyToExtract}, normalized rate: ${normalizedRate}`);
-
-                let provider = 'Unknown';
-                if (context.toLowerCase().includes('remitly')) provider = 'Remitly (from total)';
-                else if (context.toLowerCase().includes('sendwave')) provider = 'Sendwave (from total)';
-                else if (context.toLowerCase().includes('taptapsend') || context.toLowerCase().includes('taptap')) provider = 'TapTapSend (from total)';
-                else if (context.toLowerCase().includes('nala') && !sendwaveOnly) provider = 'Nala (from total)';
-
-                // Only add if we don't already have this rate
-                const existingRate = rates.find(r => Math.abs(r.rate - normalizedRate) < 0.1);
+              }
+              
+              if (rate >= 50 && rate <= 10000) {
+                // Only add if we don't already have a rate for this provider
+                const existingRate = rates.find(r => r.provider.includes('Nala'));
                 if (!existingRate) {
                   rates.push({
-                    provider,
-                    rate: normalizedRate,
-                    recipientReceives: value,
+                    provider: 'Nala (from rate display)',
+                    rate: rate,
+                    recipientReceives: rate * amount,
                     currency: currencyToExtract,
                     timestamp: new Date().toISOString(),
-                    extractedFrom: 'Total amount normalization',
+                    extractedFrom: 'Rate display pattern',
                     rawValue: match[1]
                   });
-                  debugInfo.push(`   Added normalized rate: ${normalizedRate} ${currencyToExtract} (from total: ${value})`);
+                  
+                  debugInfo.push(`  Added from rate display: ${rate} → ${(rate * amount).toLocaleString()} ${currencyToExtract}`);
                 }
               }
-            }
+            });
           });
 
-          // Step 6: Final deduplication and validation
-          const finalRates = [];
-          const seenRates = new Set();
+
+          debugInfo.push(`\n🏁 EXTRACTION COMPLETE. Final rates: ${rates.length}`);
           rates.forEach(rate => {
-            const key = `${rate.provider}-${Math.round(rate.rate * 100)}`;
-            if (!seenRates.has(key) && rate.rate > 0) {
-              seenRates.add(key);
-              finalRates.push(rate);
-            }
+            debugInfo.push(`  ${rate.provider}: ${rate.rate} → ${rate.recipientReceives.toLocaleString()} ${rate.currency}`);
           });
 
-          debugInfo.push(`🏁 DEBUG ANALYSIS COMPLETE. Final rates: ${finalRates.length} for currency ${currencyToExtract}`);
-          debugInfo.push(`   Original target: ${toCurrency}, Normalized: ${normalizedToCurrency}, Actually extracted: ${currencyToExtract}`);
-
-          return { rates: finalRates, debugInfo, actualCurrency: currencyToExtract };
+          return { rates, debugInfo, actualCurrency: currencyToExtract };
         }, fromCurrency, toCurrency, amount, sendwaveOnly, this.supportedCurrencies, this.normalizeCurrency(toCurrency));
-
         console.log('🐛 DEEP DEBUG Results:');
         extractedRates.debugInfo.forEach(line => console.log(line));
 

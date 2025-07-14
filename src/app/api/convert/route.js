@@ -7,7 +7,6 @@ export async function GET(request) {
     const to = searchParams.get('to');
     const amount = parseFloat(searchParams.get('amount'));
 
-    // Validation
     if (!from || !to || !amount) {
       return NextResponse.json(
         { 
@@ -98,7 +97,6 @@ export async function POST(request) {
     const body = await request.json();
     const { from, to, amount } = body;
 
-    // Validation
     if (!from || !to || !amount) {
       return NextResponse.json(
         { 
@@ -133,7 +131,6 @@ export async function POST(request) {
       );
     }
 
-    // Call FastForex API
     const url = `https://api.fastforex.io/convert?from=${from}&to=${to}&amount=${amount}&api_key=${API_KEY}`;
     const response = await fetch(url);
     
@@ -143,9 +140,7 @@ export async function POST(request) {
     
     const data = await response.json();
     const rate = data?.result?.rate;
-    
-    console.log('FastForex conversion rate:', rate);
-    
+        
     if (!rate) {
       return NextResponse.json(
         {
