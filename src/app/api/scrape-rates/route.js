@@ -18,10 +18,20 @@ async function getScraperInstance() {
     isInitializing = true;
     try {
       console.log('🔧 Creating new scraper instance...');
+      
+      // Detect if we're in a serverless environment
+      const isServerless = !!(
+        process.env.VERCEL || 
+        process.env.AWS_LAMBDA_FUNCTION_NAME || 
+        process.env.NETLIFY ||
+        process.env.NODE_ENV === 'production'
+      );
+      
       scraperInstance = new NalaRateScraperService({
         maxRetries: 2,
         retryDelay: 3000,
-        pageTimeout: 300000 // 5 minutes
+        pageTimeout: 300000, // 5 minutes
+        isServerless: isServerless
       });
       
       await scraperInstance.initialize();

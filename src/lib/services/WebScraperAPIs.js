@@ -58,6 +58,80 @@ class NalaRateScraperService {
     return this.currencyNormalizationMap[currency] || currency;
   }
 
+  // async initialize() {
+  //   if (this.browser && !this.browser.disconnected) {
+  //     return;
+  //   }
+
+  //   if (this.isInitializing) {
+  //     while (this.isInitializing) {
+  //       await new Promise(resolve => setTimeout(resolve, 100));
+  //     }
+  //     return;
+  //   }
+
+  //   this.isInitializing = true;
+
+  //   try {
+  //     console.log('🔧 Initializing browser...');
+
+  //     let browserOptions;
+
+  //     if (this.isServerless) {
+  //       // Serverless environment configuration (AWS Lambda, Vercel, etc.)
+  //       console.log('🔧 Configuring for serverless environment...');
+
+  //       browserOptions = {
+  //         args: [
+  //           ...chromium.args,
+  //           '--hide-scrollbars',
+  //           '--disable-web-security',
+  //           '--no-first-run',
+  //           '--no-default-browser-check',
+  //           '--disable-default-apps',
+  //           '--disable-popup-blocking',
+  //           '--disable-translate',
+  //           '--disable-background-timer-throttling',
+  //           '--disable-renderer-backgrounding',
+  //           '--disable-backgrounding-occluded-windows',
+  //           '--disable-ipc-flooding-protection',
+  //         ],
+  //         defaultViewport: chromium.defaultViewport,
+  //         executablePath: await chromium.executablePath(),
+  //         headless: chromium.headless,
+  //         ignoreHTTPSErrors: true,
+  //         timeout: 30000
+  //       };
+  //     } else {
+  //       // Local development environment
+  //       console.log('🔧 Configuring for local environment...');
+
+  //       browserOptions = {
+  //         headless: true,
+  //         args: [
+  //           '--no-sandbox',
+  //           '--disable-setuid-sandbox',
+  //           '--disable-dev-shm-usage',
+  //           '--disable-accelerated-2d-canvas',
+  //           '--no-first-run',
+  //           '--no-zygote',
+  //           '--disable-gpu'
+  //         ],
+  //         timeout: 30000
+  //       };
+  //     }
+
+  //     this.browser = await puppeteer.launch(browserOptions);
+  //     console.log('✅ Browser initialized successfully');
+
+  //   } catch (error) {
+  //     console.error('❌ Failed to initialize browser:', error);
+  //     throw error;
+  //   } finally {
+  //     this.isInitializing = false;
+  //   }
+  // }
+
   async initialize() {
     if (this.browser && !this.browser.disconnected) {
       return;
@@ -74,13 +148,13 @@ class NalaRateScraperService {
 
     try {
       console.log('🔧 Initializing browser...');
-      
+
       let browserOptions;
-      
-      if (this.isServerless) {
-        // Serverless environment configuration (AWS Lambda, Vercel, etc.)
+
+      if (this.isServerless || process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+        // Serverless environment - use @sparticuz/chromium
         console.log('🔧 Configuring for serverless environment...');
-        
+
         browserOptions = {
           args: [
             ...chromium.args,
@@ -103,11 +177,19 @@ class NalaRateScraperService {
           timeout: 30000
         };
       } else {
-        // Local development environment
+        // Local development - use system Chrome or downloaded Chrome
         console.log('🔧 Configuring for local environment...');
-        
+
+        // Try to use the Chrome that Puppeteer downloaded
+        const os = require('os');
+        const path = require('path');
+
+        // Path where your Chrome is actually installed
+        const chromePath = path.join(os.homedir(), '.cache', 'puppeteer', 'chrome', 'mac_arm-138.0.7204.94', 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
+
         browserOptions = {
           headless: true,
+          executablePath: chromePath, // Explicitly set the path
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -119,11 +201,18 @@ class NalaRateScraperService {
           ],
           timeout: 30000
         };
+
+        // Fallback to system Chrome if the specific path doesn't work
+        const fs = require('fs');
+        if (!fs.existsSync(chromePath)) {
+          console.log('⚠️ Downloaded Chrome not found, trying system Chrome...');
+          delete browserOptions.executablePath; // Let Puppeteer find Chrome
+        }
       }
 
       this.browser = await puppeteer.launch(browserOptions);
       console.log('✅ Browser initialized successfully');
-      
+
     } catch (error) {
       console.error('❌ Failed to initialize browser:', error);
       throw error;
@@ -157,7 +246,7 @@ class NalaRateScraperService {
 
       // Set user agent
       await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-      
+
       // Set viewport
       await page.setViewport({ width: 1366, height: 768 });
 
@@ -176,7 +265,7 @@ class NalaRateScraperService {
             req.continue();
           }
         });
-        
+
         // Set additional headers for better compatibility
         await page.setExtraHTTPHeaders({
           'Accept-Language': 'en-US,en;q=0.9',
@@ -338,11 +427,11 @@ class NalaRateScraperService {
 
             // Wait for dropdown options to load with better selectors
             const dropdownSelectors = [
-              '[role="listbox"]', 'ul', '[data-testid*="currency-options"]', 
+              '[role="listbox"]', 'ul', '[data-testid*="currency-options"]',
               'div[class*="dropdown"]', 'div[class*="menu"]', 'div[class*="options"]',
               '[class*="currency-list"]', '[class*="select"]', '[class*="popover"]'
             ];
-            
+
             // Wait for dropdown to appear
             let dropdownFound = false;
             for (let i = 0; i < 3; i++) {
@@ -359,12 +448,12 @@ class NalaRateScraperService {
             }
 
             const options = Array.from(document.querySelectorAll([
-              '[role="option"]', 'li', 'button', '[data-testid*="currency-option"]', 
+              '[role="option"]', 'li', 'button', '[data-testid*="currency-option"]',
               'div[class*="option"]', 'div[class*="item"]', '[class*="currency-item"]',
-              'span[class*="currency"]', 'div[class*="currency"]', 
+              'span[class*="currency"]', 'div[class*="currency"]',
               '[class*="country"]', '[class*="flag"]'
             ].join(', ')));
-            
+
             const availableOptions = options.map(o => o.textContent?.trim()).filter(Boolean);
 
             console.log('Available TO currency options:', availableOptions.slice(0, 10)); // Show first 10
@@ -389,15 +478,15 @@ class NalaRateScraperService {
                 const isMatch = countryNames.some(name => {
                   const lowerOptionText = optionText.toLowerCase();
                   const lowerName = name.toLowerCase();
-                  
-                  return lowerOptionText.includes(lowerName) || 
-                         // Special handling for specific currencies
-                         (targetCurrency === 'KSH' && (lowerOptionText.includes('kenya') || lowerOptionText.includes('kes'))) ||
-                         (targetCurrency === 'KES' && (lowerOptionText.includes('kenya') || lowerOptionText.includes('ksh'))) ||
-                         (targetCurrency === 'GHS' && (lowerOptionText.includes('ghana') || lowerOptionText.includes('cedi'))) ||
-                         // Handle flag emojis
-                         optionText.includes('🇰🇪') || optionText.includes('🇳🇬') || 
-                         optionText.includes('🇺🇬') || optionText.includes('🇹🇿') || optionText.includes('🇬🇭');
+
+                  return lowerOptionText.includes(lowerName) ||
+                    // Special handling for specific currencies
+                    (targetCurrency === 'KSH' && (lowerOptionText.includes('kenya') || lowerOptionText.includes('kes'))) ||
+                    (targetCurrency === 'KES' && (lowerOptionText.includes('kenya') || lowerOptionText.includes('ksh'))) ||
+                    (targetCurrency === 'GHS' && (lowerOptionText.includes('ghana') || lowerOptionText.includes('cedi'))) ||
+                    // Handle flag emojis
+                    optionText.includes('🇰🇪') || optionText.includes('🇳🇬') ||
+                    optionText.includes('🇺🇬') || optionText.includes('🇹🇿') || optionText.includes('🇬🇭');
                 });
 
                 if (isMatch) {
@@ -438,7 +527,7 @@ class NalaRateScraperService {
           // Enhanced retry with multiple approaches
           const retryResult = await page.evaluate(async (targetCurrency, currencyToCountryMap, normalizedCurrency) => {
             console.log('Starting comprehensive retry for currency:', targetCurrency);
-            
+
             const buttons = Array.from(document.querySelectorAll('button, [role="button"], [aria-label*="currency"], [data-testid*="currency"]'));
             const countryNames = currencyToCountryMap[targetCurrency] || [targetCurrency];
 
@@ -452,13 +541,13 @@ class NalaRateScraperService {
 
                 // Approach 1: Try search input with multiple search terms
                 const searchInputSelectors = [
-                  'input[aria-autocomplete="list"]', 'input[type="text"]', 
+                  'input[aria-autocomplete="list"]', 'input[type="text"]',
                   'input[class*="search"]', 'input[id*="search"]',
                   'input[placeholder*="search"]', 'input[placeholder*="currency"]',
                   'input[class*="filter"]', 'input[class*="select"]',
                   'input[role="searchbox"]', 'input[aria-label*="search"]'
                 ];
-                
+
                 let searchInput = null;
                 for (const selector of searchInputSelectors) {
                   searchInput = document.querySelector(selector);
@@ -471,38 +560,38 @@ class NalaRateScraperService {
                 if (searchInput) {
                   // Try multiple search terms
                   const searchTerms = [
-                    targetCurrency, 
-                    normalizedCurrency, 
+                    targetCurrency,
+                    normalizedCurrency,
                     ...countryNames,
                     targetCurrency === 'KSH' ? 'Kenya' : null,
                     targetCurrency === 'KES' ? 'Kenya' : null,
                     targetCurrency === 'GHS' ? 'Ghana' : null
                   ].filter(Boolean);
-                  
+
                   for (const searchTerm of searchTerms) {
                     console.log('Trying search term:', searchTerm);
                     searchInput.focus();
                     searchInput.value = '';
                     searchInput.value = searchTerm;
-                    
+
                     // Dispatch comprehensive events
                     ['focus', 'input', 'change', 'keyup'].forEach(eventType => {
                       searchInput.dispatchEvent(new Event(eventType, { bubbles: true }));
                     });
-                    
+
                     await new Promise(resolve => setTimeout(resolve, 2000));
-                    
+
                     // Try Enter key
                     ['keydown', 'keypress', 'keyup'].forEach(eventType => {
-                      searchInput.dispatchEvent(new KeyboardEvent(eventType, { 
-                        bubbles: true, 
+                      searchInput.dispatchEvent(new KeyboardEvent(eventType, {
+                        bubbles: true,
                         key: 'Enter',
                         code: 'Enter',
                         which: 13,
                         keyCode: 13
                       }));
                     });
-                    
+
                     await new Promise(resolve => setTimeout(resolve, 2000));
 
                     // Look for any confirmation buttons
@@ -511,20 +600,20 @@ class NalaRateScraperService {
                       '[class*="confirm"]', '[class*="apply"]', '[class*="ok"]',
                       '[class*="select"]', '[class*="done"]', '[class*="save"]'
                     ];
-                    
+
                     for (const selector of confirmSelectors) {
                       const buttons = Array.from(document.querySelectorAll(selector));
                       for (const btn of buttons) {
                         const btnText = btn.textContent?.toLowerCase().trim();
-                        if (btnText && (btnText.includes('confirm') || btnText.includes('apply') || 
-                           btnText.includes('ok') || btnText.includes('select') || 
-                           btnText.includes('done') || btnText.includes('save'))) {
+                        if (btnText && (btnText.includes('confirm') || btnText.includes('apply') ||
+                          btnText.includes('ok') || btnText.includes('select') ||
+                          btnText.includes('done') || btnText.includes('save'))) {
                           console.log('Found and clicking confirmation button:', btnText);
                           btn.click();
                           await new Promise(resolve => setTimeout(resolve, 3000));
-                          return { 
-                            buttonClicked: true, 
-                            optionSelected: true, 
+                          return {
+                            buttonClicked: true,
+                            optionSelected: true,
                             optionText: searchTerm + ' (via search + confirm)',
                             method: 'search_with_confirm'
                           };
@@ -532,11 +621,11 @@ class NalaRateScraperService {
                       }
                     }
                   }
-                  
+
                   // If search didn't work with confirmation, just try the search
-                  return { 
-                    buttonClicked: true, 
-                    optionSelected: true, 
+                  return {
+                    buttonClicked: true,
+                    optionSelected: true,
                     optionText: targetCurrency + ' (via search attempt)',
                     method: 'search_attempt'
                   };
@@ -550,14 +639,14 @@ class NalaRateScraperService {
                   '[class*="country"]', '[class*="flag"]', '[class*="dropdown"]',
                   '[aria-label*="currency"]', '[title*="currency"]'
                 ];
-                
+
                 const allOptions = Array.from(document.querySelectorAll(allOptionSelectors.join(', ')));
                 console.log(`Found ${allOptions.length} potential option elements`);
-                
+
                 for (const option of allOptions) {
                   const optionText = option.textContent?.trim();
                   if (!optionText || optionText.length > 50) continue; // Skip very long text
-                  
+
                   // More comprehensive matching
                   const matchConditions = [
                     optionText.includes(targetCurrency),
@@ -573,10 +662,10 @@ class NalaRateScraperService {
                     optionText.includes('🇹🇿') && targetCurrency === 'TZS',
                     optionText.includes('🇬🇭') && targetCurrency === 'GHS'
                   ];
-                  
+
                   if (matchConditions.some(condition => condition)) {
                     console.log('Found comprehensive match:', optionText);
-                    
+
                     // Try multiple click approaches
                     const clickMethods = [
                       () => option.click(),
@@ -584,24 +673,24 @@ class NalaRateScraperService {
                       () => option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) && option.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })),
                       () => option.focus() && option.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
                     ];
-                    
+
                     for (const clickMethod of clickMethods) {
                       try {
                         clickMethod();
                         await new Promise(resolve => setTimeout(resolve, 2000));
-                        
+
                         // Check if click was successful by looking for UI changes
                         const currencyButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
                         const hasTargetCurrency = currencyButtons.some(b => {
                           const text = b.textContent?.trim();
                           return text === targetCurrency || text === normalizedCurrency;
                         });
-                        
+
                         if (hasTargetCurrency) {
                           console.log('Click successful - target currency detected');
-                          return { 
-                            buttonClicked: true, 
-                            optionSelected: true, 
+                          return {
+                            buttonClicked: true,
+                            optionSelected: true,
                             optionText: optionText,
                             method: 'comprehensive_click'
                           };
@@ -612,18 +701,18 @@ class NalaRateScraperService {
                     }
                   }
                 }
-                
-                return { 
-                  buttonClicked: true, 
+
+                return {
+                  buttonClicked: true,
                   optionSelected: false,
                   method: 'comprehensive_retry_failed',
                   availableOptions: allOptions.slice(0, 20).map(o => o.textContent?.trim()).filter(Boolean)
                 };
               }
             }
-            
-            return { 
-              buttonClicked: false, 
+
+            return {
+              buttonClicked: false,
               optionSelected: false,
               method: 'no_currency_button_found'
             };
@@ -652,7 +741,7 @@ class NalaRateScraperService {
           new RegExp(`1\\s+[A-Z]{3}\\s*≈\\s*[\\d,.]+\\s+${normalizedToCurrency}`, 'gi'),
           new RegExp(`1\\s+[A-Z]{3}\\s*≈\\s*[\\d,.]+\\s+${targetCurrency}`, 'gi'),
         ];
-        
+
         let rateDisplayMatches = [];
         ratePatterns.forEach(pattern => {
           const matches = document.body.textContent.match(pattern) || [];
@@ -661,7 +750,7 @@ class NalaRateScraperService {
 
         // Check what currencies are actually selected
         const selectedCurrencies = currencyButtons.map(b => b.textContent?.trim());
-        const isCorrectCurrency = selectedCurrencies.some(curr => 
+        const isCorrectCurrency = selectedCurrencies.some(curr =>
           curr === targetCurrency || curr === normalizedToCurrency
         );
 
@@ -669,8 +758,8 @@ class NalaRateScraperService {
           selectedCurrencies: selectedCurrencies,
           rateDisplay: [...new Set(rateDisplayMatches)], // Remove duplicates
           isCorrectCurrencySelected: isCorrectCurrency,
-          pageHasTargetCurrency: document.body.textContent.includes(targetCurrency) || 
-                                 document.body.textContent.includes(normalizedToCurrency)
+          pageHasTargetCurrency: document.body.textContent.includes(targetCurrency) ||
+            document.body.textContent.includes(normalizedToCurrency)
         };
       }, toCurrency, this.normalizeCurrency(toCurrency));
 
@@ -765,42 +854,42 @@ class NalaRateScraperService {
             const text = el.textContent || '';
             // Enhanced pattern to catch the currency that's actually shown
             const allCurrencies = [...supportedCurrencies, 'KES', 'KSH'];
-            
+
             // Get all potential matches first
             const allMatches = [...text.matchAll(new RegExp(`([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*(${allCurrencies.join('|')})`, 'gi'))];
-            
+
             // Filter out GMT+ timestamp matches and other time-related patterns
             const matches = allMatches.filter(match => {
               const matchIndex = text.indexOf(match[0]);
               const beforeContext = text.substring(Math.max(0, matchIndex - 15), matchIndex);
-              
+
               // Skip if this appears to be part of a timestamp
-              return !beforeContext.includes('GMT+') && 
-                     !beforeContext.includes('GMT ') && 
-                     !beforeContext.includes('as of:') &&
-                     !beforeContext.includes('UTC+') &&
-                     !beforeContext.match(/\d{2}:\d{2}/) && // Skip time patterns like "09:34"
-                     !beforeContext.match(/\d{1,2}:\d{2}/) && // Skip time patterns like "9:34"
-                     !beforeContext.toLowerCase().includes('time') &&
-                     !beforeContext.toLowerCase().includes('rate');
+              return !beforeContext.includes('GMT+') &&
+                !beforeContext.includes('GMT ') &&
+                !beforeContext.includes('as of:') &&
+                !beforeContext.includes('UTC+') &&
+                !beforeContext.match(/\d{2}:\d{2}/) && // Skip time patterns like "09:34"
+                !beforeContext.match(/\d{1,2}:\d{2}/) && // Skip time patterns like "9:34"
+                !beforeContext.toLowerCase().includes('time') &&
+                !beforeContext.toLowerCase().includes('rate');
             });
 
             matches.forEach(match => {
               if (match && match[1] && match[2]) {
                 const value = parseFloat(match[1].replace(/,/g, ''));
                 const currency = match[2].toUpperCase();
-                
+
                 const context = text.substring(
                   Math.max(0, text.indexOf(match[0]) - 100),
                   Math.min(text.length, text.indexOf(match[0]) + match[0].length + 100)
                 );
-                
+
                 // Additional validation: Skip if context suggests this is timestamp-related
                 if (context.includes('GMT+') || context.includes('as of:') || context.includes('UTC+')) {
                   debugInfo.push(`   Skipped timestamp-related match: ${value} ${currency} (context contains GMT/UTC)`);
                   return;
                 }
-                
+
                 foundRates.push({
                   rate: value,
                   rawValue: match[1],
@@ -822,12 +911,12 @@ class NalaRateScraperService {
             if (rate.currency !== currencyToExtract.toUpperCase()) {
               return false;
             }
-            
+
             // Additional filter: Skip if context suggests this is from a timestamp
             if (rate.context.includes('GMT+') || rate.context.includes('as of:') || rate.context.includes('UTC+')) {
               return false;
             }
-            
+
             // Check if it's a reasonable exchange rate (not a large total amount)
             if (rate.rate >= 100 && rate.rate <= 5000) {
               return true;
@@ -916,7 +1005,7 @@ class NalaRateScraperService {
             new RegExp(`1\\s+${fromCurrency}\\s*≈\\s*([\\d,.]+)\\s+${toCurrency}`, 'gi'),
             new RegExp(`1\\s+${fromCurrency}\\s*≈\\s*([\\d,.]+)\\s+${normalizedToCurrency}`, 'gi')
           ];
-          
+
           let allRateDisplays = [];
           rateDisplayPatterns.forEach(pattern => {
             const matches = [...pageText.matchAll(pattern)];
@@ -951,42 +1040,42 @@ class NalaRateScraperService {
 
           // Step 5: Extract total amounts and normalize if needed (with GMT+ filtering)
           debugInfo.push('🔍 DEBUG 5: Normalizing rates from total amounts...');
-          
+
           // First get all potential matches
           const allTotalMatches = [...pageText.matchAll(new RegExp(`([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{2})?)\\s*${currencyToExtract}`, 'gi'))];
-          
+
           // Filter out GMT+ and timestamp matches
           const totalMatches = allTotalMatches.filter(match => {
             const matchIndex = pageText.indexOf(match[0]);
             const beforeContext = pageText.substring(Math.max(0, matchIndex - 15), matchIndex);
-            return !beforeContext.includes('GMT+') && 
-                   !beforeContext.includes('GMT ') && 
-                   !beforeContext.includes('as of:') &&
-                   !beforeContext.includes('UTC+') &&
-                   !beforeContext.match(/\d{2}:\d{2}/);
+            return !beforeContext.includes('GMT+') &&
+              !beforeContext.includes('GMT ') &&
+              !beforeContext.includes('as of:') &&
+              !beforeContext.includes('UTC+') &&
+              !beforeContext.match(/\d{2}:\d{2}/);
           });
-          
+
           debugInfo.push(`   Found ${totalMatches.length} valid total amount matches for ${currencyToExtract} (filtered from ${allTotalMatches.length} total)`);
-          
+
           totalMatches.forEach(match => {
             if (match && match[1]) {
               const value = parseFloat(match[1].replace(/,/g, ''));
               const normalizedRate = value / amount;
-              
+
               if (normalizedRate >= 100 && normalizedRate <= 5000 && value > 10000) { // Only normalize large amounts
                 const context = pageText.substring(
                   Math.max(0, pageText.indexOf(match[0]) - 100),
                   Math.min(pageText.length, pageText.indexOf(match[0]) + match[0].length + 100)
                 );
-                
+
                 // Skip if context suggests this is from a timestamp
                 if (context.includes('GMT+') || context.includes('as of:') || context.includes('UTC+')) {
                   debugInfo.push(`   Skipped timestamp-related total: ${value} ${currencyToExtract}`);
                   return;
                 }
-                
+
                 debugInfo.push(`   Processing total: ${value} ${currencyToExtract}, normalized rate: ${normalizedRate}`);
-                
+
                 let provider = 'Unknown';
                 if (context.toLowerCase().includes('remitly')) provider = 'Remitly (from total)';
                 else if (context.toLowerCase().includes('sendwave')) provider = 'Sendwave (from total)';
@@ -1174,8 +1263,8 @@ class NalaRateScraperService {
       errors.push({ service: 'nala', error: result.error || 'No rates extracted' });
     }
     if (hasCurrencyMismatch) {
-      errors.push({ 
-        service: 'nala', 
+      errors.push({
+        service: 'nala',
         error: `Currency mismatch: Requested ${toCurrency}, but found ${actualCurrency}`,
         type: 'currency_mismatch'
       });
