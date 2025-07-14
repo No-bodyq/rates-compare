@@ -56,7 +56,14 @@ const debounce = (func, wait) => {
     };
 };
 
-// Helper function to validate API response
+// Helper function to validate FastForex API response
+const validateConvertResponse = (data) => {
+    if (!data || typeof data !== "object") return false;
+    if (!data.success) return false;
+    return data.rate && data.result;
+};
+
+// Helper function to validate scraping API response
 const validateRateResponse = (data) => {
     if (!data || typeof data !== "object") return false;
     if (!data.success) return false;
@@ -133,11 +140,11 @@ function Send() {
         targetCurrencyRef.current = targetCurrency;
     }, [sourceCurrency, targetCurrency]);
 
-    // API call to fetch exchange rate
+    // NEW: API call to fetch exchange rate using FastForex Convert API
     const fetchExchangeRate = useCallback(
-        async (base, target, amount) => {
-            if (!base || !target) {
-                console.log("🚫 fetchExchangeRate skipped: missing base or target currency");
+        async (from, to, amount) => {
+            if (!from || !to) {
+                console.log("🚫 fetchExchangeRate skipped: missing from or to currency");
                 setError("Please select both source and recipient currencies");
                 setIsLoadingRate(false);
                 return;
@@ -148,7 +155,7 @@ function Send() {
                 return;
             }
 
-            if (base === target) {
+            if (from === to) {
                 setIsLoadingRate(false);
                 setRate(1);
                 if (lastEditedField === "base") {
@@ -168,10 +175,11 @@ function Send() {
             currentRequestRef.current = requestId;
 
             try {
-                console.log(`🔄 Fetching exchange rate: ${base} → ${target} (${amount})`);
+                console.log(`🔄 Fetching conversion rate: ${from} → ${to} (${amount})`);
 
+                // Use the new FastForex Convert API
                 const response = await fetch(
-                    `/api/scrape-rates?base=${base}&target=${target}&amount=${amount}&sendwave=true`
+                    `/api/convert?from=${from}&to=${to}&amount=${amount}`
                 );
 
                 if (!response.ok) {
@@ -186,27 +194,18 @@ function Send() {
                     return;
                 }
 
-                if (validateRateResponse(data)) {
-                    const rateData = data.data.rates[0];
-                    let newRate;
-
-                    if (rateData.recipientReceives) {
-                        newRate = parseFloat(rateData.recipientReceives) / parseFloat(amount);
-                    } else if (rateData.rate) {
-                        newRate = parseFloat(rateData.rate);
-                    } else {
-                        newRate = parseFloat(rateData.exchangeRate);
-                    }
+                if (validateConvertResponse(data)) {
+                    const newRate = parseFloat(data.rate);
+                    const convertedAmount = parseFloat(data.result);
 
                     console.log("✅ Exchange rate set:", newRate);
                     setRate(newRate);
                     setError("");
 
-                    const currentAmount = parseFloat(baseValueRef.current) || 0;
-                    if (currentAmount && lastEditedField === "base") {
-                        const calculated = newRate * currentAmount;
-                        setTargetValue(isNaN(calculated) ? "" : calculated.toFixed(2));
-                    } else if (targetValue && lastEditedField === "target") {
+                    // Update the target value with the converted amount
+                    if (lastEditedField === "base") {
+                        setTargetValue(convertedAmount.toFixed(2));
+                    } else if (lastEditedField === "target") {
                         const calculatedBase = parseFloat(targetValue) / newRate;
                         const formattedBase = isNaN(calculatedBase)
                             ? ""
@@ -215,10 +214,7 @@ function Send() {
                         baseValueRef.current = formattedBase;
                     }
                 } else {
-                    const errorMsg =
-                        data?.errors?.[0] ||
-                        data?.message ||
-                        "No valid exchange rate available";
+                    const errorMsg = data?.error || "No valid exchange rate available";
                     console.warn("❌ No valid exchange rate available:", errorMsg);
                     setRate(null);
                     setError(errorMsg);
@@ -239,7 +235,7 @@ function Send() {
         [lastEditedField, targetValue, isUserInteracted]
     );
 
-    // API call to fetch all rates
+    // API call to fetch all rates (Keep existing scraping API for Compare Rates)
     const fetchAllRates = useCallback(
         async (base, target, amount) => {
             if (!base || !target) {
@@ -332,12 +328,11 @@ function Send() {
 
     // Initialize debounced fetch
     useEffect(() => {
-        debouncedFetchRef.current = debounce((base, target, amount) => {
-            fetchExchangeRate(base, target, amount);
+        debouncedFetchRef.current = debounce((from, to, amount) => {
+            fetchExchangeRate(from, to, amount);
         }, 1000);
     }, [fetchExchangeRate]);
 
-    // Auto-fetch all rates when currency pair changes
     useEffect(() => {
         if (
             sourceCurrency &&
@@ -354,12 +349,10 @@ function Send() {
         }
     }, [sourceCurrency, targetCurrency, baseValue, isUserInteracted, fetchAllRates]);
 
-    // Keep baseValueRef updated
     useEffect(() => {
         baseValueRef.current = baseValue;
     }, [baseValue]);
 
-    // Handle source currency change
     const handleSourceCurrencyChange = (currency) => {
         console.log(`💰 Source currency changed to: ${currency}`);
         setShowSourceList(false);
@@ -392,7 +385,6 @@ function Send() {
         }
     };
 
-    // Handle target currency change
     const handleTargetCurrencyChange = (currency) => {
         console.log(`💱 Target currency changed to: ${currency}`);
         setShowTargetList(false);
@@ -464,7 +456,6 @@ function Send() {
         }
     };
 
-    // Effect to fetch rate when currencies or baseValue change
     useEffect(() => {
         if (
             !sourceCurrency ||
@@ -489,7 +480,6 @@ function Send() {
         }
     }, [rate, error]);
 
-    // Handle base value change
     const handleBaseChange = (newValue) => {
         setError("");
         setLastEditedField("base");
@@ -521,7 +511,6 @@ function Send() {
         }
     };
 
-    // Handle target value change
     const handleTargetChange = (newValue) => {
         setError("");
         setLastEditedField("target");
@@ -544,7 +533,6 @@ function Send() {
         }
     };
 
-    // Handle continue button with amount validation
     const handleContinue = () => {
         if (!sourceCurrency || !targetCurrency) {
             setError("Please select both source and recipient currencies");
@@ -614,7 +602,7 @@ function Send() {
         sourceCurrencies.includes(targetCurrency) &&
         targetCurrencies.includes(sourceCurrency);
 
-    // Render rates comparison view
+    // Render rates comparison view (Keep existing implementation)
     const renderRatesComparison = () => {
         console.log("🎨 Rendering rates comparison:", { allRates, bestRate, rateComparison });
 
@@ -778,7 +766,7 @@ function Send() {
                                             <div className="flex items-center gap-2">
                                                 <p className="font-semibold text-gray-800">{rateData.provider}</p>
                                                 <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                                                    {rateData.sourceType || "API"}
+                                                    {rateData.sourceType || ""}
                                                 </span>
                                             </div>
                                             <p className="text-xs text-gray-500">{rateData.rateTime}</p>
@@ -935,9 +923,11 @@ function Send() {
                                 <span>Fetching latest rate...</span>
                             </div>
                         ) : rate && targetCurrency ? (
-                            <p>
-                                Rate: 1 {sourceCurrency} = {rate.toFixed(4)} {targetCurrency}
-                            </p>
+                            <div className="flex items-center gap-2">
+                                <p>
+                                    Rate: 1 {sourceCurrency} = {rate.toFixed(4)} {targetCurrency}
+                                </p>
+                            </div>
                         ) : (
                             <p className="text-blue-500 text-sm">
                                 {targetCurrency
@@ -963,20 +953,15 @@ function Send() {
                         {isLoadingRate || rateRequestInProgress.current ? (
                             <div className="text-lg text-gray-400">0.00</div>
                         ) : (
-                            <FormattedCurrencyInput
-                                value={
-                                    targetValue ||
-                                    (baseValue && rate
-                                        ? (parseFloat(baseValue) * rate).toFixed(2)
-                                        : "")
+                            <div className="text-lg text-black">
+                                {targetValue || (baseValue && rate) ? 
+                                    parseFloat(targetValue || (parseFloat(baseValue) * rate).toFixed(2)).toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    }) : 
+                                    "0.00"
                                 }
-                                onChange={handleTargetChange}
-                                placeholder="0.00"
-                                className="text-lg w-full text-black border-0 outline-none"
-                                disabled={
-                                    isLoadingRate || rateRequestInProgress.current || !targetCurrency
-                                }
-                            />
+                            </div>
                         )}
                     </div>
                     <div className="relative">
@@ -1051,16 +1036,6 @@ function Send() {
     return (
         <div className="w-screen lg:w-full h-full flex justify-center items-center">
             <div className="w-full lg:w-3/5 h-full flex flex-col gap-10">
-                {/* <div className="flex flex-col items-center justify-between">
-                    <div className="w-full flex flex-row justify-center items-center z-20">
-                        <h1 className="text-gray-300 text-6xl font-bold">Powered by</h1>
-                        <Image src="/PCXLogo.png" width={300} height={20} alt="logo" />
-                        <br />
-                    </div>
-                    <h3 className="text-gray-300 text-xl text-center">
-                        Send money worldwide with ease, speed, and security.
-                    </h3>
-                </div> */}
                 <div className="flex flex-col items-center justify-center gap-4 p-4 sm:p-6">
                     <div className="flex flex-row flex-wrap justify-center items-center gap-2 sm:gap-4 w-full max-w-3xl z-20">
                         <h1 className="text-gray-300 text-4xl sm:text-5xl lg:text-6xl font-bold text-center">
