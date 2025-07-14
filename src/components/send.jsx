@@ -180,7 +180,7 @@ function Send() {
                         baseValueRef.current = formattedBase;
                     }
                 } else {
-                    console.warn("❌ No valid exchange rate available:", data.errors);
+                    // console.warn("❌ No valid exchange rate available:", data.errors);
                     console.log('data>>>>', data)
                     setRate(null);
                     setError(data.errors || "Failed to fetch exchange rate");
@@ -616,7 +616,7 @@ function Send() {
                             <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />
                         </div>
                         {showSourceList && (
-                            <div className="absolute left-0 mt-1 w-64 border rounded-md bg-white shadow-lg z-30 max-h-48 overflow-y-auto">
+                            <div className="absolute left-0 mt-1 w-64 border border-gray-200 rounded-md bg-white shadow-lg z-30 max-h-48 overflow-y-auto">
                                 {map(sourceCurrencies, (currency) => (
                                     <div
                                         key={currency}
@@ -637,8 +637,8 @@ function Send() {
                         <button
                             onClick={handleCurrencySwap}
                             className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isSwapAllowed
-                                    ? "bg-gray-200 hover:bg-gray-300 cursor-pointer"
-                                    : "bg-gray-100 cursor-not-allowed opacity-50"
+                                ? "bg-gray-200 hover:bg-gray-300 cursor-pointer"
+                                : "bg-gray-100 cursor-not-allowed opacity-50"
                                 }`}
                             title={isSwapAllowed ? "Swap currencies" : "Swap not available for this currency pair"}
                             disabled={!isSwapAllowed}
@@ -882,7 +882,7 @@ function Send() {
                             <ChevronDown className="w-4 h-4 text-gray-500 ml-2" />
                         </button>
                         {showSourceList && (
-                            <div className="absolute right-0 mt-1 w-64 border rounded-md bg-white shadow-lg z-20 max-h-48 overflow-y-auto">
+                            <div className="absolute right-0 mt-1 w-64 border border-gray-200 rounded-md bg-white shadow-lg z-20 max-h-48 overflow-y-auto">
                                 {map(sourceCurrencies, (currency) => (
                                     <div
                                         key={currency}
@@ -944,7 +944,6 @@ function Send() {
                             <div className="text-lg text-gray-400">0.00</div>
                         ) : (
                             <FormattedCurrencyInput
-                                // value={targetValue}
                                 value={targetValue || (baseValue && rate ? (parseFloat(baseValue) * rate).toFixed(2) :
                                     baseValue && bestRate ? (parseFloat(baseValue) * bestRate.exchangeRate).toFixed(2) : "")}
                                 onChange={handleTargetChange}
@@ -967,7 +966,7 @@ function Send() {
                             <ChevronDown className="w-4 h-4 text-gray-500 ml-2" />
                         </button>
                         {showTargetList && (
-                            <div className="absolute right-0 mt-1 w-64 border rounded-md bg-white shadow-lg z-20 max-h-48 overflow-y-auto">
+                            <div className="absolute right-0 mt-1 w-64 border border-gray-200 rounded-md bg-white shadow-lg z-20 max-h-48 overflow-y-auto">
                                 {map(targetCurrencies, (currency) => (
                                     <div
                                         key={currency}
