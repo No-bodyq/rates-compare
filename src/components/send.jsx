@@ -604,9 +604,9 @@ function Send() {
                     </button>
                 </div>
 
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex text-gray-900 justify-between items-center mb-6">
                     <div className="flex-1 relative">
-                        <p className="text-sm text-gray-600 mb-2">When sending</p>
+                        <p className="text-sm text-gray-900 mb-2">When sending</p>
                         <div
                             className="flex items-center gap-2 bg-gray-100 rounded-lg p-3 cursor-pointer hover:bg-gray-200 transition-colors"
                             onClick={() => setShowSourceList(true)}
@@ -860,12 +860,12 @@ function Send() {
                     className={`border rounded-xl ${error ? "border-red-400" : "border-gray-300"} px-5 py-2 flex justify-between my-5`}
                 >
                     <div className="flex-1">
-                        <p className="capitalize">you send: </p>
+                        <p className="capitalize text-black">you send: </p>
                         <FormattedCurrencyInput
                             value={baseValue}
                             onChange={handleBaseChange}
                             placeholder="0.00"
-                            className={`text-lg ${isLoadingRate || rateRequestInProgress.current ? "opacity-50" : ""} w-full border-0 outline-none`}
+                            className={`text-lg text-black ${isLoadingRate || rateRequestInProgress.current ? "opacity-50" : ""} w-full border-0 outline-none`}
                             disabled={isLoadingRate || rateRequestInProgress.current} />
                     </div>
                     <div className="relative">
@@ -882,7 +882,7 @@ function Send() {
                             <ChevronDown className="w-4 h-4 text-gray-500 ml-2" />
                         </button>
                         {showSourceList && (
-                            <div className="absolute right-0 mt-1 w-64 border border-gray-200 rounded-md bg-white shadow-lg z-20 max-h-48 overflow-y-auto">
+                            <div className="absolute text-black right-0 mt-1 w-64 border border-gray-200 rounded-md bg-white shadow-lg z-20 max-h-48 overflow-y-auto">
                                 {map(sourceCurrencies, (currency) => (
                                     <div
                                         key={currency}
@@ -939,7 +939,7 @@ function Send() {
                     className={`border rounded-xl ${error ? "border-red-400" : "border-gray-300"} px-5 py-2 flex justify-between my-5`}
                 >
                     <div className="flex-1">
-                        <p className="capitalize">recipient gets: </p>
+                        <p className="capitalize text-black">recipient gets: </p>
                         {isLoadingRate || rateRequestInProgress.current ? (
                             <div className="text-lg text-gray-400">0.00</div>
                         ) : (
@@ -948,7 +948,7 @@ function Send() {
                                     baseValue && bestRate ? (parseFloat(baseValue) * bestRate.exchangeRate).toFixed(2) : "")}
                                 onChange={handleTargetChange}
                                 placeholder="0.00"
-                                className="text-lg w-full border-0 outline-none"
+                                className="text-lg w-full text-black border-0 outline-none"
                                 disabled={isLoadingRate || rateRequestInProgress.current || !targetCurrency} />
                         )}
                     </div>
@@ -961,12 +961,12 @@ function Send() {
                         >
                             <div className="flex items-center gap-2">
                                 <span className="text-xl">{currencyMap[targetCurrency]?.flag || "🌐"}</span>
-                                <span className="font-medium">{targetCurrency || "Select Currency"}</span>
+                                <span className="font-medium text-black">{targetCurrency || "Select Currency"}</span>
                             </div>
                             <ChevronDown className="w-4 h-4 text-gray-500 ml-2" />
                         </button>
                         {showTargetList && (
-                            <div className="absolute right-0 mt-1 w-64 border border-gray-200 rounded-md bg-white shadow-lg z-20 max-h-48 overflow-y-auto">
+                            <div className="absolute text-black right-0 mt-1 w-64 border border-gray-200 rounded-md bg-white shadow-lg z-20 max-h-48 overflow-y-auto">
                                 {map(targetCurrencies, (currency) => (
                                     <div
                                         key={currency}
@@ -1027,7 +1027,7 @@ function Send() {
                         <h3 className="text-gray-600 text-2xl text-center">Send money worldwide with ease, speed and security.</h3>
                     </div>
                 </div>
-                <div className="border border-gray-200 rounded-lg">
+                <div className="border border-gray-200 bg-white rounded-lg">
                     {activeView === "send" ? renderSendForm() : renderRatesComparison()}
                     {showSourceList && <div className="fixed inset-0 z-10" onClick={() => setShowSourceList(false)} />}
                     {showTargetList && <div className="fixed inset-0 z-10" onClick={() => setShowTargetList(false)} />}

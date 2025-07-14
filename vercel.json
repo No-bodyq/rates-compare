@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "app/api/**/*.js": {
+      "maxDuration": 30
+    }
+  },
+  "buildCommand": "npm run build && npx puppeteer browsers install chrome"
+}
