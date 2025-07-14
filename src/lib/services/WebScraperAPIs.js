@@ -1,4 +1,5 @@
 import puppeteer from "puppeteer";
+import chromium from '@sparticuz/chromium';
 
 class NalaRateScraperService {
   constructor(options) {
@@ -21,6 +22,7 @@ class NalaRateScraperService {
     this.retryDelay = options.retryDelay;
     this.pageTimeout = options.pageTimeout;
     this.isInitializing = false;
+    this.isServerless = options.isServerless || false; // Add serverless flag
 
     this.services = {
       nala: {
@@ -30,7 +32,7 @@ class NalaRateScraperService {
     };
 
     this.supportedCurrencies = [
-      'USD', 'GBP', 'EUR', 'NGN', 'KES', 'KSH', 'UGX', 'TZS', 'GHS'
+      'USD', 'GBP', 'EUR', 'NGN', 'KES', 'KSH', 'UGX', 'TZS', 'GHS', 'INR'
     ];
 
     // Fixed currency to country name mapping for dropdown selection
@@ -40,7 +42,8 @@ class NalaRateScraperService {
       'KSH': ['Kenya', 'Kenyan Shilling', 'KES', 'KSH'],
       'GHS': ['Ghana', 'Ghana Cedis', 'GHS', 'Ghanaian Cedi'],
       'UGX': ['Uganda', 'Ugandan Shilling'],
-      'TZS': ['Tanzania', 'Tanzanian Shilling']
+      'TZS': ['Tanzania', 'Tanzanian Shilling'],
+      'INR': ['India', 'Indian Rupee']
     };
 
     // Currency normalization map - treat KSH and KES as the same
@@ -71,16 +74,56 @@ class NalaRateScraperService {
 
     try {
       console.log('🔧 Initializing browser...');
-      this.browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage'
-        ],
-        timeout: 30000
-      });
+      
+      let browserOptions;
+      
+      if (this.isServerless) {
+        // Serverless environment configuration (AWS Lambda, Vercel, etc.)
+        console.log('🔧 Configuring for serverless environment...');
+        
+        browserOptions = {
+          args: [
+            ...chromium.args,
+            '--hide-scrollbars',
+            '--disable-web-security',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-default-apps',
+            '--disable-popup-blocking',
+            '--disable-translate',
+            '--disable-background-timer-throttling',
+            '--disable-renderer-backgrounding',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-ipc-flooding-protection',
+          ],
+          defaultViewport: chromium.defaultViewport,
+          executablePath: await chromium.executablePath(),
+          headless: chromium.headless,
+          ignoreHTTPSErrors: true,
+          timeout: 30000
+        };
+      } else {
+        // Local development environment
+        console.log('🔧 Configuring for local environment...');
+        
+        browserOptions = {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
+          ],
+          timeout: 30000
+        };
+      }
+
+      this.browser = await puppeteer.launch(browserOptions);
       console.log('✅ Browser initialized successfully');
+      
     } catch (error) {
       console.error('❌ Failed to initialize browser:', error);
       throw error;
@@ -112,11 +155,37 @@ class NalaRateScraperService {
     try {
       page = await this.browser.newPage();
 
+      // Set user agent
       await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      
+      // Set viewport
       await page.setViewport({ width: 1366, height: 768 });
 
+      // Set timeouts
       await page.setDefaultNavigationTimeout(this.pageTimeout);
       await page.setDefaultTimeout(this.pageTimeout);
+
+      // Additional serverless optimizations
+      if (this.isServerless) {
+        // Block unnecessary resources to improve performance
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+          if (req.resourceType() === 'image' || req.resourceType() === 'stylesheet' || req.resourceType() === 'font') {
+            req.abort();
+          } else {
+            req.continue();
+          }
+        });
+        
+        // Set additional headers for better compatibility
+        await page.setExtraHTTPHeaders({
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+        });
+      }
 
       console.log(`🕐 Page timeouts set to: ${this.pageTimeout}ms (${this.pageTimeout / 1000} seconds)`);
 
