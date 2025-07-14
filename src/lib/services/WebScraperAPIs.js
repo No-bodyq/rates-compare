@@ -568,7 +568,7 @@ class NalaRateScraperService {
 
       // Take a screenshot for debugging
       console.log('📸 Taking screenshot for debugging...');
-      await page.screenshot({ path: `debug_screenshot_${toCurrency}_${Date.now()}.png`, fullPage: true });
+      // await page.screenshot({ path: `debug_screenshot_${toCurrency}_${Date.now()}.png`, fullPage: true });
 
       console.log('🔍 Step 4: Checking final currency selection...');
       const finalState = await page.evaluate((targetCurrency, normalizedToCurrency) => {
@@ -998,7 +998,7 @@ class NalaRateScraperService {
       };
     } finally {
       if (page) {
-        await page.screenshot({ path: `final_screenshot_${toCurrency}_${Date.now()}.png`, fullPage: true });
+        // await page.screenshot({ path: `final_screenshot_${toCurrency}_${Date.now()}.png`, fullPage: true });
         await page.close().catch(err => console.error('⚠️ Error closing page:', err.message));
         console.log('✅ Page closed');
       }
