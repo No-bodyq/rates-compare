@@ -1054,7 +1054,7 @@ function Send() {
                 <div className="flex flex-col items-center justify-between">
                     <div className="w-full flex flex-row justify-center items-center z-20">
                         <h1 className="text-gray-300 text-6xl font-bold">Powered by</h1>
-                        <Image src="/PCXLogo.png" width={200} height={20} alt="logo" />
+                        <Image src="/PCXLogo.png" width={300} height={20} alt="logo" />
                         <br />
                     </div>
                     <h3 className="text-gray-300 text-xl text-center">
