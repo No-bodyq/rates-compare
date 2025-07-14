@@ -1,7 +1,7 @@
 "use client";
-
+import Image from "next/image";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ChevronDown, Loader, TrendingUp, AlertCircle, RefreshCw, ArrowUpDown } from "lucide-react";
+import { ChevronDown, Loader, TrendingUp, AlertCircle, RefreshCw, ArrowUpDown, Flag } from "lucide-react";
 import { useRouter } from "next/navigation";
 import map from "lodash/map";
 
@@ -10,24 +10,21 @@ const currencyMap = {
     USD: { flag: "🇺🇸", country: "United States" },
     EUR: { flag: "🇪🇺", country: "European Union" },
     GBP: { flag: "🇬🇧", country: "United Kingdom" },
-    JPY: { flag: "🇯🇵", country: "Japan" },
-    CAD: { flag: "🇨🇦", country: "Canada" },
-    AUD: { flag: "🇦🇺", country: "Australia" },
-    CHF: { flag: "🇨🇭", country: "Switzerland" },
-    CNY: { flag: "🇨🇳", country: "China" },
     KES: { flag: "🇰🇪", country: "Kenya" },
     NGN: { flag: "🇳🇬", country: "Nigeria" },
-    ZAR: { flag: "🇿🇦", country: "South Africa" },
+    GHS: { flag: "🇬🇭", country: "Ghana" },
     INR: { flag: "🇮🇳", country: "India" },
+    TZS: { flag: "🇹🇿", country: "Tanzania" },
+    UGX: { flag: "🇺🇬", country: "Uganda" },
+    XAF: { flag: "🇨🇲", country: "Cameroon" },
+    XOF: { flag: "🇨🇮", country: "Côte d'Ivoire" }
 };
 
 // Split currencies into source (send) and target (receive)
-const sourceCurrencies = ['USD', 'EUR', 'GBP']; // Only these 3 for sending
+const sourceCurrencies = ['USD', 'EUR', 'GBP'];
 const targetCurrencies = Object.keys(currencyMap).filter(currency =>
     !sourceCurrencies.includes(currency)
-); // All others for receiving
-
-const supportedCurrencies = Object.keys(currencyMap); // Keep this for backward compatibility
+);
 
 // Mock FormattedCurrencyInput component
 const FormattedCurrencyInput = ({ value, onChange, placeholder, className, disabled }) => (
@@ -51,6 +48,16 @@ const debounce = (func, wait) => {
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(context, args), wait);
     };
+};
+
+// Helper function to validate API response
+const validateRateResponse = (data) => {
+    if (!data || typeof data !== 'object') return false;
+    if (!data.success) return false;
+    if (!data.data?.rates?.length) return false;
+    
+    const rateData = data.data.rates[0];
+    return rateData.recipientReceives || rateData.rate || rateData.exchangeRate;
 };
 
 // Helper function to calculate best rate
@@ -145,6 +152,7 @@ function Send() {
 
             rateRequestInProgress.current = true;
             setIsLoadingRate(true);
+            setError(""); // Clear previous errors
 
             const requestId = Date.now();
             currentRequestRef.current = requestId;
@@ -155,6 +163,11 @@ function Send() {
                 const response = await fetch(
                     `/api/scrape-rates?base=${base}&target=${target}&amount=${amount}&sendwave=true`
                 );
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
                 const data = await response.json();
                 console.log("📥 fetchExchangeRate response:", data);
 
@@ -163,33 +176,45 @@ function Send() {
                     return;
                 }
 
-                if (data.success && data.data.rates.length > 0) {
-                    const rateData = data.data.rates[0]; // Assuming Sendwave rate
-                    const newRate = rateData.recipientReceives ? rateData.recipientReceives / amount : rateData.rate || rateData.exchangeRate;
+                if (validateRateResponse(data)) {
+                    const rateData = data.data.rates[0];
+                    let newRate;
+                    
+                    if (rateData.recipientReceives) {
+                        newRate = parseFloat(rateData.recipientReceives) / parseFloat(amount);
+                    } else if (rateData.rate) {
+                        newRate = parseFloat(rateData.rate);
+                    } else {
+                        newRate = parseFloat(rateData.exchangeRate);
+                    }
+
                     console.log("✅ Exchange rate set:", newRate);
                     setRate(newRate);
+                    setError("");
 
                     const currentAmount = parseFloat(baseValueRef.current) || 0;
                     if (currentAmount && lastEditedField === "base") {
-                        const calculated = parseFloat(newRate) * currentAmount;
+                        const calculated = newRate * currentAmount;
                         setTargetValue(isNaN(calculated) ? "" : calculated.toFixed(2));
                     } else if (targetValue && lastEditedField === "target") {
-                        const calculatedBase = parseFloat(targetValue) / parseFloat(newRate);
+                        const calculatedBase = parseFloat(targetValue) / newRate;
                         const formattedBase = isNaN(calculatedBase) ? "" : calculatedBase.toFixed(2);
                         setBaseValue(formattedBase);
                         baseValueRef.current = formattedBase;
                     }
                 } else {
-                    // console.warn("❌ No valid exchange rate available:", data.errors);
-                    console.log('data>>>>', data)
+                    const errorMsg = data?.errors?.[0] || 
+                                    data?.message || 
+                                    "No valid exchange rate available";
+                    console.warn("❌ No valid exchange rate available:", errorMsg);
                     setRate(null);
-                    setError(data.errors || "Failed to fetch exchange rate");
+                    setError(errorMsg);
                 }
             } catch (error) {
                 if (requestId === currentRequestRef.current) {
                     console.error("❌ Error fetching exchange rate:", error);
                     setRate(null);
-                    setError("Failed to fetch exchange rate");
+                    setError(error.message || "Failed to fetch exchange rate. Please try again.");
                 }
             } finally {
                 if (requestId === currentRequestRef.current) {
@@ -217,12 +242,19 @@ function Send() {
             }
 
             setIsLoadingAllRates(true);
+            setError(""); // Clear previous errors
+            
             try {
                 console.log(`🔄 Fetching all rates: ${base} → ${target} (${amount})`);
 
                 const response = await fetch(
                     `/api/scrape-rates?base=${base}&target=${target}&amount=${amount}`
                 );
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
                 const data = await response.json();
                 console.log("📥 fetchAllRates response:", data);
 
@@ -236,24 +268,29 @@ function Send() {
                         provider: rate.provider || rate.service,
                         uniqueId: `${rate.provider || rate.service}-${index}-${data.data.timestamp || Date.now()}`,
                     }));
+                    
                     console.log("✅ Rates set:", rates);
                     setAllRates(rates);
+                    setError("");
+                    
                     const best = getBestRate(rates);
                     setBestRate(best);
                     console.log("✅ Best rate:", best);
+                    
                     const comparison = getRateComparison(rates);
                     setRateComparison(comparison);
                     console.log("✅ Rate comparison:", comparison);
+                    
                     setLastRateUpdate(new Date(data.data.timestamp));
                 } else {
-                    throw new Error(data.error || "Failed to fetch rates");
+                    throw new Error(data.error || "No valid rates data received");
                 }
             } catch (error) {
                 console.error("💥 Error fetching all rates:", error);
                 setAllRates([]);
                 setBestRate(null);
                 setRateComparison(null);
-                setError(error.message || "Failed to fetch rates");
+                setError(error.message || "Failed to fetch rates. Please try again.");
             } finally {
                 setIsLoadingAllRates(false);
             }
@@ -300,6 +337,7 @@ function Send() {
         setSourceCurrency(currency);
         sourceCurrencyRef.current = currency;
         setIsUserInteracted(true);
+        setError("");
 
         if (!targetCurrency) {
             setError("Please select a recipient currency");
@@ -332,6 +370,7 @@ function Send() {
         setTargetCurrency(currency);
         targetCurrencyRef.current = currency;
         setIsUserInteracted(true);
+        setError("");
 
         if (!sourceCurrency) {
             setError("Please select a source currency");
@@ -361,7 +400,7 @@ function Send() {
             return;
         }
 
-        // Check if swap is allowed (source must be in sourceCurrencies, target in targetCurrencies)
+        // Check if swap is allowed
         if (!targetCurrencies.includes(sourceCurrency) || !sourceCurrencies.includes(targetCurrency)) {
             setError("Currency swap not allowed. Source must be USD, EUR, or GBP.");
             return;
@@ -384,6 +423,7 @@ function Send() {
 
         setLastEditedField("base");
         setIsUserInteracted(true);
+        setError("");
 
         if (tempTarget !== tempSource && tempTargetValue) {
             fetchExchangeRate(tempTarget, tempSource, tempTargetValue);
@@ -419,7 +459,7 @@ function Send() {
 
     // Handle base value change
     const handleBaseChange = (newValue) => {
-        if (error) setError("");
+        setError("");
         setLastEditedField("base");
         setBaseValue(newValue);
         baseValueRef.current = newValue;
@@ -451,7 +491,7 @@ function Send() {
 
     // Handle target value change
     const handleTargetChange = (newValue) => {
-        if (error) setError("");
+        setError("");
         setLastEditedField("target");
         setTargetValue(newValue);
         setIsUserInteracted(true);
@@ -514,36 +554,6 @@ function Send() {
         }
     };
 
-    // Test specific service
-    const testSpecificService = async (serviceName) => {
-        if (!sourceCurrency || !targetCurrency || sourceCurrency === targetCurrency || !isUserInteracted) {
-            setError("Please select both source and recipient currencies");
-            return;
-        }
-
-        console.log(`🧪 Testing ${serviceName}...`);
-        const amount = parseFloat(baseValue) || 1000;
-
-        try {
-            const response = await fetch("/api/scrape-rates", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    base: sourceCurrency,
-                    target: targetCurrency,
-                    amount,
-                    sendwaveOnly: serviceName === "sendwave",
-                }),
-            });
-            const data = await response.json();
-            console.log(`✅ ${serviceName} test result:`, data);
-            return data;
-        } catch (error) {
-            console.error(`❌ ${serviceName} test failed:`, error);
-            setError("Failed to test service");
-        }
-    };
-
     // Initial rate fetch
     useEffect(() => {
         if (
@@ -562,11 +572,6 @@ function Send() {
             setError("Please select both source and recipient currencies");
         }
     }, [sourceCurrency, targetCurrency, baseValue, isUserInteracted, rate, fetchExchangeRate]);
-
-    // Log state for debugging
-    useEffect(() => {
-        console.log("🛠️ State debug:", { allRates, bestRate, rateComparison, rate, isLoadingAllRates, targetCurrency });
-    }, [allRates, bestRate, rateComparison, rate, isLoadingAllRates, targetCurrency]);
 
     // Determine if continue button is disabled
     const isContinueDisabled =
@@ -604,15 +609,15 @@ function Send() {
                     </button>
                 </div>
 
-                <div className="flex text-gray-900 justify-between items-center mb-6">
+                <div className="flex justify-between items-center mb-6">
                     <div className="flex-1 relative">
-                        <p className="text-sm text-gray-900 mb-2">When sending</p>
+                        <p className="text-sm text-gray-600 mb-2">When sending</p>
                         <div
                             className="flex items-center gap-2 bg-gray-100 rounded-lg p-3 cursor-pointer hover:bg-gray-200 transition-colors"
                             onClick={() => setShowSourceList(true)}
                         >
-                            <span className="text-2xl">{currencyMap[sourceCurrency]?.flag}</span>
-                            <span className="font-semibold">{baseValue || "1000"} {sourceCurrency}</span>
+                            <span className="text-2xl text-black">{currencyMap[sourceCurrency]?.flag}</span>
+                            <span className="font-semibold text-black">{baseValue || "1000"} {sourceCurrency}</span>
                             <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />
                         </div>
                         {showSourceList && (
@@ -652,8 +657,8 @@ function Send() {
                             className="flex items-center gap-2 bg-gray-100 rounded-lg p-3 cursor-pointer hover:bg-gray-200 transition-colors"
                             onClick={() => setShowTargetList(true)}
                         >
-                            <span className="text-2xl">{currencyMap[targetCurrency]?.flag || "🌐"}</span>
-                            <span className="font-semibold">{targetCurrency || "Select Currency"}</span>
+                            <span className="text-2xl text-black">{currencyMap[targetCurrency]?.flag || "🌐"}</span>
+                            <span className="font-semibold text-black">{targetCurrency || "Select Currency"}</span>
                             <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />
                         </div>
                         {showTargetList && (
@@ -691,13 +696,6 @@ function Send() {
                         >
                             <RefreshCw className={`w-4 h-4 ${isLoadingAllRates ? "animate-spin" : ""}`} />
                             Refresh
-                        </button>
-                        <button
-                            onClick={() => testSpecificService("wise")}
-                            className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                            disabled={!isUserInteracted || !sourceCurrency || !targetCurrency}
-                        >
-                            Test Wise
                         </button>
                     </div>
                 </div>
@@ -802,7 +800,7 @@ function Send() {
                         onClick={() => setActiveView("send")}
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl p-3 transition-colors"
                     >
-                        Back to Send
+                        Back to Compare
                     </button>
                 </div>
             </div>
@@ -875,7 +873,7 @@ function Send() {
                             disabled={isLoadingRate || rateRequestInProgress.current}
                             type="button"
                         >
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 text-black">
                                 <span className="text-xl">{currencyMap[sourceCurrency]?.flag}</span>
                                 <span className="font-medium">{sourceCurrency}</span>
                             </div>
@@ -891,8 +889,8 @@ function Send() {
                                     >
                                         <span className="text-xl">{currencyMap[currency]?.flag}</span>
                                         <div className="flex flex-col">
-                                            <span className="font-medium">{currency}</span>
-                                            <span className="text-xs text-gray-500">{currencyMap[currency]?.country}</span>
+                                            <span className="font-medium text-black">{currency}</span>
+                                            <span className="text-xs text-black">{currencyMap[currency]?.country}</span>
                                         </div>
                                     </div>
                                 ))}
@@ -973,7 +971,7 @@ function Send() {
                                         className="flex items-center gap-2 p-3 cursor-pointer hover:bg-gray-100 transition-colors"
                                         onClick={() => handleTargetCurrencyChange(currency)}
                                     >
-                                        <span className="text-xl">{currencyMap[currency]?.flag}</span>
+                                        <span className="text-xl text-black">{currencyMap[currency]?.flag}</span>
                                         <div className="flex flex-col">
                                             <span className="font-medium">{currency}</span>
                                             <span className="text-xs text-gray-500">{currencyMap[currency]?.country}</span>
@@ -997,21 +995,6 @@ function Send() {
                             </p>
                         </div>
                     )}
-                    {/* <button
-                    onClick={handleContinue}
-                    className={`w-full ${isContinueDisabled ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"} text-white rounded-xl p-3 transition-colors`}
-                    disabled={isContinueDisabled}
-                    type="button"
-                >
-                    {isLoadingRate || rateRequestInProgress.current ? (
-                        <div className="flex items-center justify-center">
-                            <Loader className="w-4 h-4 mr-2 animate-spin" />
-                            Calculating...
-                        </div>
-                    ) : (
-                        "Continue"
-                    )}
-                </button> */}
                 </div>
             </>
         );
@@ -1020,14 +1003,15 @@ function Send() {
     return (
         <div className="w-screen lg:w-full h-full flex justify-center items-center">
             <div className="w-full lg:w-3/5 h-full flex flex-col gap-10">
-                <div className="flex items-center justify-between">
-                    <div className="w-full flex flex-col justify-center items-center">
-                        <h1 className="text-blue-600 text-6xl font-bold">Go global with PCX</h1>
+                <div className="flex flex-col items-center justify-between">
+                    <div className="w-full flex flex-row justify-center items-center z-20">
+                        <h1 className="text-gray-300 text-6xl font-bold">Powered by</h1>
+                         <Image src="/PCXLogo.png" width={200} height={20} alt="logo" />
                         <br />
-                        <h3 className="text-gray-600 text-2xl text-center">Send money worldwide with ease, speed and security.</h3>
                     </div>
+                        <h3 className="text-gray-300 text-xl text-center">Send money worldwide with ease, speed and security.</h3>
                 </div>
-                <div className="border border-gray-200 bg-white rounded-lg">
+                <div className="border border-gray-200 bg-white  rounded-lg">
                     {activeView === "send" ? renderSendForm() : renderRatesComparison()}
                     {showSourceList && <div className="fixed inset-0 z-10" onClick={() => setShowSourceList(false)} />}
                     {showTargetList && <div className="fixed inset-0 z-10" onClick={() => setShowTargetList(false)} />}
