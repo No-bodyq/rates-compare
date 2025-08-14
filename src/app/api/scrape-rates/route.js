@@ -1,8 +1,6 @@
-// app/api/scrape-rates/route.js
 import { NextResponse } from 'next/server';
 import NalaRateScraperService from '../../../lib/services/WebScraperAPIs';
 
-// Global instance to reuse across requests (important for performance)
 let scraperInstance = null;
 let isInitializing = false;
 
@@ -17,9 +15,7 @@ async function getScraperInstance() {
   if (!scraperInstance) {
     isInitializing = true;
     try {
-      console.log('🔧 Creating new scraper instance...');
       
-      // Detect if we're in a serverless environment
       const isServerless = !!(
         process.env.VERCEL || 
         process.env.AWS_LAMBDA_FUNCTION_NAME || 
@@ -35,9 +31,7 @@ async function getScraperInstance() {
       });
       
       await scraperInstance.initialize();
-      console.log('✅ Scraper instance ready');
     } catch (error) {
-      console.error('❌ Failed to initialize scraper:', error);
       scraperInstance = null;
       throw error;
     } finally {
@@ -56,8 +50,6 @@ export async function GET(request) {
     const amount = parseFloat(searchParams.get('amount')) || 1000;
     const onlySendwave = searchParams.get('sendwave') === 'true';
 
-    console.log(`🔍 API Request: ${amount} ${base} → ${target}${onlySendwave ? ' (Sendwave only)' : ''}`);
-
     if (!base || !target) {
       return NextResponse.json(
         { 
@@ -69,15 +61,12 @@ export async function GET(request) {
       );
     }
 
-    // Get scraper instance
     const scraper = await getScraperInstance();
 
-    // Choose method based on request
     let result;
     if (onlySendwave) {
       result = await scraper.getSendwaveRateOnly(base, target, amount);
     } else {
-      console.log('📊 Getting all rates...');
       result = await scraper.scrapeAllRates(base, target, amount);
     }
 
@@ -96,7 +85,6 @@ export async function GET(request) {
     });
 
   } catch (error) {
-    console.error('❌ Scraping API error:', error);
     
     return NextResponse.json(
       { 
@@ -114,7 +102,6 @@ export async function POST(request) {
     const body = await request.json();
     const { base, target, amount, sendwaveOnly } = body;
 
-    console.log(`🔍 POST Request: ${amount || 1000} ${base} → ${target}${sendwaveOnly ? ' (Sendwave only)' : ''}`);
 
     // Validation
     if (!base || !target) {
@@ -128,21 +115,16 @@ export async function POST(request) {
       );
     }
 
-    // Get scraper instance
+    // scraper instance
     const scraper = await getScraperInstance();
 
     // Choose method based on request
     let result;
     if (sendwaveOnly) {
-      console.log('🎯 Getting Sendwave rate only...');
       result = await scraper.getSendwaveRateOnly(base, target, amount || 1000);
     } else {
-      console.log('📊 Getting all rates...');
       result = await scraper.scrapeAllRates(base, target, amount || 1000);
     }
-
-    console.log(`✅ Scraping completed: ${result.status}`);
-    console.log(`📊 Rates found: ${result.rates?.length || 0}`);
 
     return NextResponse.json({
       success: result.status === 'success',
@@ -158,9 +140,7 @@ export async function POST(request) {
       debug: process.env.NODE_ENV === 'development' ? result.debug : undefined
     });
 
-  } catch (error) {
-    console.error('❌ Scraping API error:', error);
-    
+  } catch (error) {    
     return NextResponse.json(
       { 
         success: false, 
