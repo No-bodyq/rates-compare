@@ -57,7 +57,6 @@ const useAuthStore = create(
       fetchedAt: null,
       isConfigured: false,
 
-      // Ensure Amplify is configured
       ensureAmplifyConfigured: async () => {
         if (!amplifyConfigured) {
           await configureAmplifyOnce();
@@ -67,14 +66,12 @@ const useAuthStore = create(
         }
       },
 
-      // Set token data
       setToken: ({ token, accessToken, expiresAt, fetchedAt }) => {
         set({ token, accessToken, expiresAt, fetchedAt });
         console.log('✅ Token cached in store');
         console.log('🔑 Token expires at:', new Date(expiresAt * 1000).toISOString());
       },
 
-      // Clear token data
       clearToken: () => {
         set({
           token: null,
@@ -85,7 +82,6 @@ const useAuthStore = create(
         console.log('🧹 Token cache cleared');
       },
 
-      // Check if token is valid
       isTokenValid: () => {
         const { token, expiresAt } = get();
         if (!token || !expiresAt) {
@@ -101,31 +97,36 @@ const useAuthStore = create(
           console.log(' Current time:', new Date(now * 1000).toISOString());
           return false;
         }
-        console.log('Cached token is still valid');
-        console.log('Token expires at:', new Date(expiresAt * 1000).toISOString());
-        console.log('Time remaining:', Math.floor((expiresAt - now) / 60), 'minutes');
+        console.log('✅ Cached token is still valid');
+        console.log('🔑 Token expires at:', new Date(expiresAt * 1000).toISOString());
+        console.log('⏳ Time remaining:', Math.floor((expiresAt - now) / 60), 'minutes');
         return true;
       },
 
-      // Fetch new token
       fetchNewToken: async () => {
-        console.log('Fetching new PCX auth token...');
+        console.log('🔄 Fetching new PCX auth token...');
         
-        // Ensure Amplify is configured first
         await get().ensureAmplifyConfigured();
         
         const { signOut, signIn, fetchAuthSession } = await import('aws-amplify/auth');
         
         try {
           await signOut();
+          console.log('🧹 Cleared any existing session');
         } catch (error) {
-          console.log('No existing session to clear>>>>>>');
+          console.log('ℹ️ No existing session to clear');
         }
 
-        await signIn({
-          username: 'hehoh88289@ethsms.com',
-          password: 'hehoh88289@ethsms.com',
-        });
+        try {
+          await signIn({
+            username: 'hehoh88289@ethsms.com',
+            password: 'hehoh88289@ethsms.com',
+          });
+          console.log('✅ Successfully signed in');
+        } catch (error) {
+          console.error('❌ Sign-in failed:', error);
+          throw new Error(`Failed to sign in: ${error.message}`);
+        }
 
         const authSession = await fetchAuthSession();
         const accessToken = authSession.tokens?.accessToken?.toString();
@@ -158,24 +159,33 @@ const useAuthStore = create(
         };
       },
 
-      // Initialize token refresh interval
       initTokenRefresh: () => {
-        const interval = setInterval(() => {
+        console.log('⏰ Initializing token refresh interval');
+        const interval = setInterval(async () => {
           const { isTokenValid, fetchNewToken, expiresAt } = get();
+          const now = Math.floor(Date.now() / 1000);
+          const timeRemaining = expiresAt ? expiresAt - now : -1;
+          console.log('⏳ Token check: time remaining:', Math.floor(timeRemaining / 60), 'minutes');
           if (expiresAt && !isTokenValid()) {
             console.log('🔄 Token nearing expiry, refreshing...');
-            fetchNewToken().catch((error) => {
+            try {
+              await fetchNewToken();
+              console.log('✅ Token refreshed successfully');
+            } catch (error) {
               console.error('❌ Failed to refresh token:', error);
-            });
+            }
           }
         }, 60 * 1000); // Check every minute
-        return () => clearInterval(interval);
+        return () => {
+          console.log('🛑 Clearing token refresh interval');
+          clearInterval(interval);
+        };
       },
     }),
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => (typeof window !== 'undefined' ? localStorage : null)),
-      getServerSnapshot: () => defaultState, // Provide default state for SSR
+      getServerSnapshot: () => defaultState,
     }
   )
 );

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ChevronDown, Loader, AlertCircle, ArrowUpDown, TrendingUp, Clock, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { map } from "lodash";
+import RateEngine from "../components/test"
 import useAuthStore from "../stores/authStore";
 import { getPCXAuthToken, getExchangeRates, getProviderExchangeRates } from "../services/auth-service";
 import { toast, ToastContainer } from "react-toastify";
@@ -1628,6 +1629,7 @@ function Send() {
         />
         {activeView === "send" ? renderSendForm() : renderRatesComparison()}
       </div>
+      {/* <RateEngine /> */}
     </div>
   );
 }
