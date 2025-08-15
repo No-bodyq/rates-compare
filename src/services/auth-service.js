@@ -1,168 +1,216 @@
-import { Amplify } from 'aws-amplify';
-import { signIn, signOut, fetchAuthSession } from 'aws-amplify/auth';
-
-let isConfigured = false;
-
-// Configure Amplify (run this once in your app initialization)
-export const configureAmplify = () => {
-  if (isConfigured) return;
-  
-  Amplify.configure({
-    Auth: {
-      Cognito: {
-        userPoolId: process.env.NEXT_PUBLIC_USER_POOL_ID || 'eu-west-2_rLl0hTRkX',
-        userPoolClientId: process.env.NEXT_PUBLIC_USER_POOL_CLIENT_ID || '20u7eufiv369ctq8sdgka8dshi',
-      }
-    }
-  });
-  
-  isConfigured = true;
-};
+import useAuthStore from '../stores/authStore';
 
 export const getPCXAuthToken = async () => {
+  const { isTokenValid, fetchNewToken, clearToken, token, accessToken, expiresAt, fetchedAt } =
+    useAuthStore.getState();
+
   try {
-    console.log('Getting PCX auth token from frontend...');
-    
-    configureAmplify();
-    
-    try {
-      await signOut();
-    } catch (error) {
-      console.log('No existing session to clear');
+    if (isTokenValid()) {
+      console.log('🎯 Using cached PCX token');
+      return {
+        success: true,
+        token,
+        accessToken,
+        expiresIn: expiresAt,
+        timestamp: new Date(fetchedAt * 1000).toISOString(),
+        fromCache: true,
+      };
     }
 
-    await signIn({
-      username: 'hehoh88289@ethsms.com',
-      password: 'hehoh88289@ethsms.com',
-    });
-
-    const authSession = await fetchAuthSession();
-    
-    const accessToken = authSession.tokens?.accessToken?.toString();
-    const idToken = authSession.tokens?.idToken?.toString();
-    const expiresIn = authSession.tokens?.idToken?.payload?.exp;
-
-    if (!idToken) {
-      throw new Error('No ID token received');
-    }
-
-    console.log('✅ PCX authentication successful from frontend');
-    console.log('🔑 Using ID token for authentication');
-
-    return {
-      success: true,
-      token: idToken, 
-      accessToken: accessToken,
-      expiresIn: expiresIn,
-      timestamp: new Date().toISOString(),
-    };
+    console.log('Cached token invalid/expired, fetching new token...');
+    return await fetchNewToken();
   } catch (error) {
-    console.error('❌ Frontend PCX authentication error:', error);
+    console.error('PCX authentication error:', error);
+    clearToken();
     throw error;
   }
 };
 
-export const getExchangeRates = async (token) => {
+export const refreshPCXAuthToken = async () => {
+  const { clearToken, fetchNewToken } = useAuthStore.getState();
   try {
-    console.log('🔄 Using proxy route to fetch exchange rates...');
+    console.log('🔄 Force refreshing PCX auth token...');
+    clearToken();
+    return await fetchNewToken();
+  } catch (error) {
+    console.error('PCX token refresh error:', error);
+    clearToken();
+    throw error;
+  }
+};
+
+export const getTokenInfo = () => {
+  const { token, expiresAt, fetchedAt, isTokenValid } = useAuthStore.getState();
+  if (!token) {
+    return { cached: false, message: 'No token cached' };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const timeRemaining = expiresAt - now;
+
+  return {
+    cached: true,
+    expiresAt: new Date(expiresAt * 1000).toISOString(),
+    fetchedAt: new Date(fetchedAt * 1000).toISOString(),
+    timeRemainingMinutes: Math.floor(timeRemaining / 60),
+    isValid: isTokenValid(),
+  };
+};
+
+export const getExchangeRates = async (providedToken = null) => {
+  try {
+    let token = providedToken;
     
     if (!token) {
-      throw new Error('No token provided');
+      console.log('🔍 No token provided, checking Zustand store...');
+      const authResult = await getPCXAuthToken();
+      token = authResult.token;
+      
+      if (authResult.fromCache) {
+        console.log('✅ Using cached token from Zustand store');
+      } else {
+        console.log('🔑 Used fresh token (cache was invalid/expired)');
+      }
+    } else {
+      console.log('🔑 Using provided token');
+    }
+
+    if (!token) {
+      throw new Error('No authentication token available');
     }
 
     console.log('🔑 Token length:', token.length);
     console.log('🔑 Token preview:', token.substring(0, 30) + '...');
 
-    // Use your Next.js API route
-    const response = await fetch('/api/exchange-rates', {
+    const apiUrl = '/api/exchange-rates';
+    console.log('📡 Making request to:', apiUrl);
+
+    const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
     });
 
-    console.log('📡 Proxy response status:', response.status);
-    console.log('📡 Proxy response ok:', response.ok);
+    console.log('📡 Response status:', response.status);
+    console.log('📡 Response ok:', response.ok);
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('❌ Proxy error response:', errorData);
+      const errorText = await response.text();
+      console.error('❌ Error response body:', errorText);
       
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { message: errorText };
+      }
+
       if (response.status === 401) {
-        throw new Error(`Authentication failed: ${errorData.message || 'Token may be invalid or expired'}`);
+        console.log('🔄 Got 401, token might be expired. Clearing cache and will retry...');
+        useAuthStore.getState().clearToken();
+        throw new Error(`Authentication failed: ${errorData.message || 'Token expired, please try again'}`);
       } else if (response.status === 403) {
         throw new Error(`Access denied: ${errorData.message || 'Insufficient permissions'}`);
       }
-      
+
       throw new Error(`Request failed (${response.status}): ${errorData.message || response.statusText}`);
     }
 
     const data = await response.json();
-    console.log('✅ Exchange rates received via proxy');
-    console.log('📊 Data preview:', Object.keys(data).length, 'items');
+    console.log('✅ Exchange rates received successfully');
+    console.log('📊 Total rates received:', data.data?.length || 0);
     
+    // Log unique providers for debugging
+    if (data.data && data.data.length > 0) {
+      const uniqueProviders = [...new Set(data.data.map(rate => rate.provider))];
+      console.log('📊 Available providers:', uniqueProviders);
+      
+      // Log unique currency pairs
+      const uniquePairs = [...new Set(data.data.map(rate => `${rate.from_currency}-${rate.to_currency}`))];
+      console.log('📊 Available currency pairs:', uniquePairs.slice(0, 10)); // Show first 10
+    }
+
     return data;
-    
   } catch (error) {
     console.error('❌ Exchange rate fetch error:', error);
+    
+    // If it's an auth error and we haven't already retried, try once more with fresh token
+    if (error.message.includes('Authentication failed') && !providedToken) {
+      console.log('🔄 Authentication failed, trying once more with fresh token...');
+      try {
+        // Force a fresh token
+        const authResult = await getPCXAuthToken();
+        if (!authResult.fromCache) {
+          console.log('🔄 Retrying with fresh token...');
+          return await getExchangeRates(authResult.token);
+        }
+      } catch (retryError) {
+        console.error('❌ Retry with fresh token also failed:', retryError);
+        throw retryError;
+      }
+    }
+    
     throw error;
   }
 };
 
-// Debug function to decode JWT tokens
-export const debugToken = (token) => {
+export const getProviderExchangeRates = async (token, provider) => {
+  const { getPCXAuthToken, clearToken } = useAuthStore.getState();
   try {
-    console.log('🔍 === TOKEN DEBUGGING ===');
-    console.log('🔑 Full token length:', token.length);
-    console.log('🔑 Token preview:', token.substring(0, 50) + '...' + token.slice(-20));
-    
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-      console.error('❌ Invalid JWT format - expected 3 parts, got', parts.length);
-      return;
+    console.log(`🔄 Using proxy route to fetch ${provider} exchange rates...`);
+    if (!token) {
+      console.log('⚠️ No token provided, attempting to get auth token...');
+      const authResult = await getPCXAuthToken();
+      token = authResult.token;
     }
-    
-    // Decode header
-    const header = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
-    console.log('📋 JWT Header:', header);
-    
-    // Decode payload
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-    console.log('📋 JWT Payload:', payload);
-    
-    // Check important fields
-    console.log('🏢 Issuer (iss):', payload.iss);
-    console.log('👤 Subject (sub):', payload.sub);
-    console.log('🎯 Audience (aud):', payload.aud || 'Not set');
-    console.log('📅 Issued at (iat):', new Date(payload.iat * 1000).toISOString());
-    console.log('📅 Expires at (exp):', new Date(payload.exp * 1000).toISOString());
-    console.log('🔐 Token use:', payload.token_use);
-    console.log('👤 Custom type:', payload['custom:type']);
-    
-    // Check if token is expired
-    const now = Date.now() / 1000;
-    const isExpired = payload.exp < now;
-    console.log('⏰ Token expired:', isExpired ? '❌ YES' : '✅ NO');
-    
-    if (isExpired) {
-      console.log('⚠️ Token expired', Math.floor((now - payload.exp) / 60), 'minutes ago');
-    } else {
-      console.log('⏳ Token expires in', Math.floor((payload.exp - now) / 60), 'minutes');
+
+    if (!provider) {
+      throw new Error('Provider parameter is required');
     }
-    
-    console.log('🔍 === END TOKEN DEBUG ===');
-    
-    return {
-      header,
-      payload,
-      isExpired,
-      tokenUse: payload.token_use,
-      customType: payload['custom:type']
-    };
-    
+
+    console.log(`>>>>>>Fetching rates for provider: ${provider}<<<<<`);
+
+    const response = await fetch(`/api/exchange-rates/provider?provider=${encodeURIComponent(provider)}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+    });
+
+    console.log(`📡 Provider proxy response status for ${provider}:`, response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error(`❌ Provider proxy error for ${provider}:`, errorData);
+
+      if (response.status === 401) {
+        console.log('🔄 Got 401 for provider request, token might be expired. Clearing cache...');
+        clearToken();
+        throw new Error(`Authentication failed: ${errorData.message || 'Token may be invalid or expired'}`);
+      } else if (response.status === 403) {
+        throw new Error(`Access denied: ${errorData.message || 'Insufficient permissions'}`);
+      } else if (response.status === 404) {
+        throw new Error(`Provider '${provider}' not found or has no available rates`);
+      }
+
+      throw new Error(`Failed to fetch ${provider} rates (${response.status}): ${errorData.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log(` ${provider} exchange rates received via proxy`);
+    console.log(`${provider} data preview:`, data?.data?.length || 0, 'rates');
+
+    return data;
   } catch (error) {
-    console.error('❌ Token debugging failed:', error);
+    console.error(`${provider} exchange rate fetch error:`, error);
+    if (error.message.includes('Authentication failed')) {
+      console.log('💡 Consider calling refreshPCXAuthToken() to get a fresh token');
+    }
+    throw error;
   }
 };
