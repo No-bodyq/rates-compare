@@ -789,7 +789,11 @@ class NalaRateScraperService {
           debugInfo.push(`Found ${rateContainers.length} potential rate containers`);
 
           rateContainers.forEach((container, index) => {
-            const containerText = container.textContent || '';
+            let containerText = container.textContent || '';
+
+            // Pre-process to insert spaces after timezone offsets to prevent concatenation (e.g., "GMT+310,148.90" -> "GMT+3 10,148.90")
+            containerText = containerText.replace(/(GMT[+-]\d{1,2})([\d,.]+)/g, '$1 $2');
+            containerText = containerText.replace(/(UTC[+-]\d{1,2})([\d,.]+)/g, '$1 $2');  // If UTC appears
             
             // Skip very large containers (likely page containers)
             if (containerText.length > 2000) {
@@ -889,9 +893,8 @@ class NalaRateScraperService {
                   context.match(/\d{2}:\d{2}/) && 
                   Math.abs(context.indexOf(match[0]) - context.search(/\d{2}:\d{2}/)) < 10
                 ) || (
-                  context.includes('GMT+') && 
-                  Math.abs(context.indexOf(match[0]) - context.indexOf('GMT+')) < 15 &&
-                  rateValue < 100 // Timezone offset numbers are small
+                  (context.includes('GMT+') || context.includes('UTC+')) && 
+                  Math.abs(context.indexOf(match[0]) - context.indexOf('GMT+') || context.indexOf('UTC+')) < 20
                 );
                 
                 if (isActualTimestamp) {
@@ -900,33 +903,35 @@ class NalaRateScraperService {
                 }
 
                 // Determine if this is an exchange rate or total amount
-                let finalRate = rateValue;
+                let finalRate;
                 let recipientAmount = rateValue;
 
-                if (rateValue > 20000) {
-                  // Very large number, likely a total amount
+                // Assume large numbers (> amount * 5) are likely recipient totals; smaller ones are exchange rates
+                if (rateValue > amount * 5) {
+                  // Likely a total amount (e.g., 10,800 for GHS or 130,000 for KES)
                   finalRate = rateValue / amount;
                   recipientAmount = rateValue;
-                } else if (rateValue >= 50 && rateValue <= 10000) {
-                  // Reasonable range for exchange rate
-                  recipientAmount = finalRate * amount;
                 } else {
-                  // Out of reasonable range
+                  // Likely an exchange rate (e.g., 10.66 for GHS or 130 for KES)
+                  finalRate = rateValue;
+                  recipientAmount = finalRate * amount;
+                }
+
+                // Broad validation: Skip absurd rates (adjust ranges based on supported currencies if needed)
+                if (finalRate < 0.1 || finalRate > 100000) {
+                  debugInfo.push(`    Skipped invalid rate ${rateValue} (finalRate ${finalRate} out of reasonable range)`);
                   return;
                 }
 
-                // Validate final rate
-                if (finalRate >= 50 && finalRate <= 10000) {
-                  containerRates.push({
-                    provider: detectedProvider,
-                    rate: finalRate,
-                    recipientReceives: recipientAmount,
-                    rawValue: match[1],
-                    context: context.trim()
-                  });
-                  
-                  debugInfo.push(`    Found rate for ${detectedProvider}: ${finalRate} → ${recipientAmount.toLocaleString()} ${currencyToExtract} (context: "${context}")`);
-                }
+                containerRates.push({
+                  provider: detectedProvider,
+                  rate: finalRate,
+                  recipientReceives: recipientAmount,
+                  rawValue: match[1],
+                  context: context.trim()
+                });
+                
+                debugInfo.push(`    Found rate for ${detectedProvider}: ${finalRate} → ${recipientAmount.toLocaleString()} ${currencyToExtract} (context: "${context}")`);
               });
             });
 
@@ -962,11 +967,11 @@ class NalaRateScraperService {
           debugInfo.push('🔍 STEP 2: Fallback - Looking for rate display patterns...');
           
           const rateDisplayPatterns = [
-            // Pattern like "1 USD ≈ 147.50 KES"
-            new RegExp(`1\\s+${fromCurrency}\\s*[≈=]\\s*([\\d,.]+)\\s+${currencyToExtract}`, 'gi'),
-            // Pattern like "USD to KES: 147.50"
+            // Pattern 1: "1 USD ≈ 10.66 GHS" (more flexible symbol matching)
+            new RegExp(`1\\s+${fromCurrency}\\s*(≈|~|=|-)\\s*([\\d,.]+)\\s+${currencyToExtract}`, 'gi'),
+            // Pattern 2: "USD to GHS: 10.66"
             new RegExp(`${fromCurrency}\\s+to\\s+${currencyToExtract}[:\\s]+([\\d,.]+)`, 'gi'),
-            // More generic patterns
+            // Pattern 3: Generic "xx.xx GHS" (keep as fallback)
             new RegExp(`([\\d,.]+)\\s+${currencyToExtract}`, 'gi')
           ];
 
@@ -1270,7 +1275,6 @@ class NalaRateScraperService {
         'Multiple click method attempts for difficult UI elements',
         'Comprehensive option matching with country names, flags, and variations',
         'Rate deduplication and validation',
-        'Enhanced debugging with actual vs requested currency tracking',
         'Graceful degradation when currency selection partially fails',
         'Screenshot capture for debugging',
         'Support for GHS (Ghanaian Cedi) currency'

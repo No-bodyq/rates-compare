@@ -45,8 +45,8 @@ function RateEngine() {
   const [fetchedOrgRates, setFetchedOrgRates] = useState({});
   const [error, setError] = useState("");
   const [isDefaultOrgValid, setIsDefaultOrgValid] = useState(null);
+  const [isUserInteracted, setIsUserInteracted] = useState(false);
 
-  // Initialize token refresh
   useEffect(() => {
     const { initTokenRefresh } = useAuthStore.getState();
     const cleanup = initTokenRefresh();
@@ -54,10 +54,86 @@ function RateEngine() {
     return cleanup;
   }, []);
 
-  // Manual token refresh
+  const ScrapeRates = useCallback(
+    async (base, target, amount) => {
+      if (!base || !target) {
+        console.log("🚫 ScrapeRates skipped: missing base or target currency");
+        setError("Please select both source and recipient currencies");
+        setIsLoadingAllRates(false);
+        return;
+      }
+      if (!isUserInteracted || !amount) {
+        console.log("🚫 ScrapeRates skipped: missing amount or user interaction");
+        setIsLoadingAllRates(false);
+        return;
+      }
 
+      setIsLoadingAllRates(true);
+      setError("");
+      setFetchedRates(null); // Clear previous rates
+      toast.info("Fetching rates from external providers...", { toastId: "scrape-rates" });
 
-  // Helper function to find the best rate for a specific corridor and provider
+      try {
+        console.log(`🔄 Scraping rates: ${base} → ${target} (${amount})`);
+        const response = await fetch(
+          `/api/scrape-rates?base=${base}&target=${target}&amount=${amount}`
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("📥 ScrapeRates response:", data);
+
+        if (data.success && data.data.rates) {
+          const mappedRates = data.data.rates.map((rate, index) => ({
+            ...rate,
+            from_currency: base,
+            to_currency: target,
+            exchangeRate: rate.recipientReceives
+              ? rate.recipientReceives / amount
+              : rate.rate || rate.exchangeRate,
+            amountReceived:
+              rate.recipientReceives ||
+              (amount - (rate.fees || 0)) * (rate.rate || rate.exchangeRate || 1),
+            rateTime: new Date(data.data.timestamp).toLocaleTimeString(),
+            status: rate.status || "success",
+            provider: rate.provider || rate.service,
+            uniqueId: `${rate.provider || rate.service}-${index}-${data.data.timestamp || Date.now()}`,
+            updatedAt: data.data.timestamp || new Date().toISOString(),
+          }));
+
+          const rateMap = new Map();
+          mappedRates.forEach((rate) => {
+            const provider = rate.provider;
+            if (!rateMap.has(provider) || rate.amountReceived > rateMap.get(provider).amountReceived) {
+              rateMap.set(provider, rate);
+            } else {
+              console.log(
+                `🚫 Duplicate rate discarded for ${provider}: ${rate.amountReceived} (kept: ${rateMap.get(provider).amountReceived})`
+              );
+            }
+          });
+
+          const deduplicatedRates = Array.from(rateMap.values());
+          console.log("✅ Deduplicated rates set:", deduplicatedRates);
+          setFetchedRates({ data: deduplicatedRates });
+          toast.success("Rates scraped successfully!", { toastId: "scrape-rates-success" });
+        } else {
+          throw new Error(data.error || "No valid rates data received");
+        }
+      } catch (error) {
+        console.error("💥 Error scraping rates:", error);
+        setError(error.message || "Failed to scrape rates. Please try again.");
+        toast.error(error.message || "Failed to scrape rates.", { toastId: "scrape-rates-error" });
+      } finally {
+        setIsLoadingAllRates(false);
+      }
+    },
+    [isUserInteracted]
+  );
+
   const findBestRate = useCallback(
     (ratesData, fromCurr, toCurr, amount, provider = null) => {
       if (!ratesData?.data) return null;
@@ -74,7 +150,6 @@ function RateEngine() {
     []
   );
 
-  // Helper function to get all providers for current corridor
   const getProvidersForCorridor = useCallback((ratesData, fromCurr, toCurr) => {
     if (!ratesData?.data) return [];
     const providers = ratesData.data
@@ -84,7 +159,6 @@ function RateEngine() {
     return providers;
   }, []);
 
-  // Fetch organization-specific rates
   const fetchOrgRates = useCallback(
     async (orgId, orgName) => {
       try {
@@ -140,12 +214,12 @@ function RateEngine() {
     [fromCurrency, toCurrency]
   );
 
-  // Fetch all rates
   const fetchAllRates = useCallback(async () => {
     try {
       setIsLoading(true);
       setIsLoadingAllRates(true);
       setError("");
+      setFetchedRates(null); // Clear previous rates
       const { token, isTokenValid } = useAuthStore.getState();
       if (!token || !isTokenValid()) {
         setError("Authentication required. Please log in.");
@@ -164,14 +238,12 @@ function RateEngine() {
     } catch (error) {
       console.error("Error fetching rates:", error);
       setError(error.message || "Failed to fetch rates from API.");
-      setFetchedRates(null);
     } finally {
       setIsLoading(false);
       setIsLoadingAllRates(false);
     }
   }, []);
 
-  // Fetch organizations
   const fetchOrgs = useCallback(async () => {
     try {
       setIsLoadingOrgs(true);
@@ -190,7 +262,6 @@ function RateEngine() {
         return;
       }
       setFetchedOrgs(orgsData);
-      // Validate default organization
       const isDefaultValid = orgsData.data.organizations.some(
         (org) => org.org_name === defaultOrg.name || org.org_id === defaultOrg.id
       );
@@ -211,7 +282,7 @@ function RateEngine() {
     }
   }, [defaultOrg]);
 
-const handleManualLogin = useCallback(async () => {
+  const handleManualLogin = useCallback(async () => {
     setIsLoading(true);
     setError("");
     try {
@@ -229,14 +300,47 @@ const handleManualLogin = useCallback(async () => {
     }
   }, [fetchOrgs, fetchAllRates, defaultOrg]);
 
-  // Fetch data on mount
+  // Fetch data on mount and clear old data
   useEffect(() => {
+    setFetchedRates(null); // Clear rates on mount
+    setFetchedOrgRates({}); // Clear org rates on mount
     getPCXAuthToken();
     fetchOrgs();
     fetchAllRates();
-    // Fetch rates for defaultOrg regardless of fetchedOrgs
     fetchOrgRates(defaultOrg.id, defaultOrg.name);
-  }, [fetchOrgs, fetchAllRates, defaultOrg, fetchOrgRates]);
+  }, [fetchOrgs, fetchAllRates, defaultOrg]);
+
+  // Reset fetchedOrgRates when selectedPCXOrg changes
+  useEffect(() => {
+    setFetchedOrgRates({}); // Clear org rates when organization changes
+    if (selectedPCXOrg) {
+      const selectedOrg = fetchedOrgs?.data?.organizations?.find(
+        (org) => (org.org_name || org.org_id) === selectedPCXOrg
+      );
+      if (selectedOrg?.org_id) {
+        fetchOrgRates(selectedOrg.org_id, selectedOrg.org_name);
+      } else if (selectedPCXOrg === defaultOrg.name) {
+        fetchOrgRates(defaultOrg.id, defaultOrg.name);
+      }
+    }
+  }, [selectedPCXOrg, fetchedOrgs, fetchOrgRates, defaultOrg]);
+
+  // Reset rates when currency corridor changes
+  useEffect(() => {
+    setFetchedRates(null); // Clear rates when corridor changes
+    setFetchedOrgRates({}); // Clear org rates when corridor changes
+    fetchAllRates();
+    if (selectedPCXOrg) {
+      const selectedOrg = fetchedOrgs?.data?.organizations?.find(
+        (org) => (org.org_name || org.org_id) === selectedPCXOrg
+      );
+      if (selectedOrg?.org_id) {
+        fetchOrgRates(selectedOrg.org_id, selectedOrg.org_name);
+      } else if (selectedPCXOrg === defaultOrg.name) {
+        fetchOrgRates(defaultOrg.id, defaultOrg.name);
+      }
+    }
+  }, [fromCurrency, toCurrency, fetchAllRates, fetchOrgRates, fetchedOrgs, selectedPCXOrg, defaultOrg]);
 
   // Set default selectedPCXOrg
   useEffect(() => {
@@ -255,21 +359,6 @@ const handleManualLogin = useCallback(async () => {
     }
   }, [fetchedOrgs, selectedPCXOrg, defaultOrg]);
 
-  // Fetch org rates when selectedPCXOrg changes
-  useEffect(() => {
-    if (selectedPCXOrg) {
-      const selectedOrg = fetchedOrgs?.data?.organizations?.find(
-        (org) => (org.org_name || org.org_id) === selectedPCXOrg
-      );
-      if (selectedOrg?.org_id) {
-        fetchOrgRates(selectedOrg.org_id, selectedOrg.org_name);
-      } else if (selectedPCXOrg === defaultOrg.name) {
-        fetchOrgRates(defaultOrg.id, defaultOrg.name);
-      }
-    }
-  }, [selectedPCXOrg, fetchedOrgs, fetchOrgRates, defaultOrg]);
-
-  // Compute enhanced rate data
   const enhancedRateData = useMemo(() => {
     const rateList = [];
     if (fetchedRates?.data) {
@@ -330,7 +419,6 @@ const handleManualLogin = useCallback(async () => {
         });
       });
     }
-    // Always include defaultOrg in rateList, even if not in fetchedOrgs
     if (!fetchedOrgs?.data?.organizations || 
         !fetchedOrgs.data.organizations.find(org => org.org_name === defaultOrg.name || org.org_id === defaultOrg.id)) {
       const orgRates = fetchedOrgRates[defaultOrg.id];
@@ -369,7 +457,6 @@ const handleManualLogin = useCallback(async () => {
     return rateList.sort((a, b) => b.finalRate - a.finalRate);
   }, [fetchedRates, fetchedOrgs, fetchedOrgRates, fromCurrency, toCurrency, sendAmount, findBestRate, getProvidersForCorridor, defaultOrg]);
 
-  // Compute current PCX rate
   const currentPCXRate = useMemo(() => {
     if (!selectedPCXOrg) {
       return {
@@ -437,6 +524,7 @@ const handleManualLogin = useCallback(async () => {
 
   const fetchRates = useCallback(() => {
     setIsLoading(true);
+    setFetchedRates(null); // Clear rates before fetching
     fetchAllRates();
     setTimeout(() => setIsLoading(false), 1500);
   }, [fetchAllRates]);
@@ -485,7 +573,12 @@ const handleManualLogin = useCallback(async () => {
     }));
   }, [benchmarkList]);
 
-  // Debug logging
+  useEffect(() => {
+    const handleInteraction = () => setIsUserInteracted(true);
+    window.addEventListener('click', handleInteraction);
+    return () => window.removeEventListener('click', handleInteraction);
+  }, []);
+
   useEffect(() => {
     console.log("fetchedOrgs:", fetchedOrgs);
     console.log("selectedPCXOrg:", selectedPCXOrg);
@@ -497,6 +590,12 @@ const handleManualLogin = useCallback(async () => {
     console.log("fetchedOrgRates:", fetchedOrgRates);
     console.log("fetchedRates:", fetchedRates);
   }, [fetchedOrgs, selectedPCXOrg, defaultOrg, isDefaultOrgValid, enhancedRateData, chartData, currentPCXRate, fetchedOrgRates, fetchedRates]);
+
+  const hasFetchedRates = useMemo(() => {
+    return fetchedRates?.data?.some(
+      (rate) => rate.from_currency === fromCurrency && rate.to_currency === toCurrency
+    );
+  }, [fetchedRates, fromCurrency, toCurrency]);
 
   return (
     <div className="min-h-screen mt-10 bg-gray-50">
@@ -555,10 +654,21 @@ const handleManualLogin = useCallback(async () => {
                 <button
                   onClick={fetchRates}
                   disabled={isLoading}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  className="flex whitespace-nowrap items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
                   <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-                  Fetch
+                  Fetch Rates
+                </button>
+                <button
+                  onClick={() => {
+                    setIsUserInteracted(true);
+                    ScrapeRates(fromCurrency, toCurrency, parseFloat(sendAmount));
+                  }}
+                  disabled={isLoadingAllRates}
+                  className="flex whitespace-nowrap items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoadingAllRates ? "animate-spin" : ""}`} />
+                  Scrape Rates
                 </button>
                 {error.includes("Authentication required") && (
                   <button
@@ -582,7 +692,6 @@ const handleManualLogin = useCallback(async () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Settings Panel */}
         {showSettings && (
           <div className="mb-6 bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
@@ -687,6 +796,7 @@ const handleManualLogin = useCallback(async () => {
                 <button
                   onClick={() => {
                     setSelectedPCXOrg(defaultOrg.name);
+                    setFetchedOrgRates({}); // Clear org rates
                     fetchOrgRates(defaultOrg.id, defaultOrg.name);
                     toast.info(`Applied default organization "${defaultOrg.name}".`, {
                       toastId: "default-org-applied",
@@ -701,7 +811,6 @@ const handleManualLogin = useCallback(async () => {
           </div>
         )}
 
-        {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
             <div className="flex items-center">
@@ -742,7 +851,6 @@ const handleManualLogin = useCallback(async () => {
                 className="w-full text-black px-3 py-2 text-sm font-medium border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="USD-NGN">USD → NGN</option>
-                <option value="USD-NGN">NGN  → USD </option>
                 <option value="USD-GHS">USD → GHS</option>
                 <option value="USD-GBP">USD → GBP</option>
                 <option value="GBP-NGN">GBP → NGN</option>
@@ -903,7 +1011,7 @@ const handleManualLogin = useCallback(async () => {
             </div>
             {getProvidersForCorridor(fetchedRates, fromCurrency, toCurrency).length === 0 && (
               <div className="text-center py-4 text-gray-500">
-                No rates available for {fromCurrency} → {toCurrency} corridor
+                No rates available for {fromCurrency} → {toCurrency} corridor click scrape to fetch from different provider's
               </div>
             )}
           </div>
@@ -964,11 +1072,7 @@ const handleManualLogin = useCallback(async () => {
                                 Active
                               </span>
                             )}
-                            {item.type === "provider" && (
-                              <span className="px-1 py-0.5 text-xs font-medium bg-green-600 text-white rounded">
-                                LIVE
-                              </span>
-                            )}
+                            
                             {item.type === "pcx" && item.status === "inactive" && (
                               <span className="px-1 py-0.5 text-xs font-medium bg-yellow-600 text-white rounded">
                                 INACTIVE
