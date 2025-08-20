@@ -57,7 +57,106 @@ export const getTokenInfo = () => {
   };
 };
 
-export const getExchangeRates = async (providedToken = null) => {
+// export const getExchangeRates = async (providedToken = null) => {
+//   try {
+//     let token = providedToken;
+    
+//     if (!token) {
+//       console.log('🔍 No token provided, checking Zustand store...');
+//       const authResult = await getPCXAuthToken();
+//       token = authResult.token;
+      
+//       if (authResult.fromCache) {
+//         console.log('✅ Using cached token from Zustand store');
+//       } else {
+//         console.log('🔑 Used fresh token (cache was invalid/expired)');
+//       }
+//     } else {
+//       console.log('🔑 Using provided token');
+//     }
+
+//     if (!token) {
+//       throw new Error('No authentication token available');
+//     }
+
+//     console.log('🔑 Token length:', token.length);
+//     console.log('🔑 Token preview:', token.substring(0, 30) + '...');
+
+//     const apiUrl = '/api/exchange-rates';
+//     console.log('📡 Making request to:', apiUrl);
+
+//     const response = await fetch(apiUrl, {
+//       method: 'GET',
+//       headers: {
+//         Authorization: `Bearer ${token}`,
+//         'Content-Type': 'application/json',
+//         Accept: 'application/json',
+//       },
+//     });
+
+//     console.log('📡 Response status:', response.status);
+//     console.log('📡 Response ok:', response.ok);
+
+//     if (!response.ok) {
+//       const errorText = await response.text();
+//       console.error('❌ Error response body:', errorText);
+      
+//       let errorData;
+//       try {
+//         errorData = JSON.parse(errorText);
+//       } catch {
+//         errorData = { message: errorText };
+//       }
+
+//       if (response.status === 401) {
+//         console.log('🔄 Got 401, token might be expired. Clearing cache and will retry...');
+//         useAuthStore.getState().clearToken();
+//         throw new Error(`Authentication failed: ${errorData.message || 'Token expired, please try again'}`);
+//       } else if (response.status === 403) {
+//         throw new Error(`Access denied: ${errorData.message || 'Insufficient permissions'}`);
+//       }
+
+//       throw new Error(`Request failed (${response.status}): ${errorData.message || response.statusText}`);
+//     }
+
+//     const data = await response.json();
+//     console.log('data34', data);
+//     console.log('✅ Exchange rates received successfully');
+//     console.log('📊 Total rates received:', data.data?.length || 0);
+    
+//     if (data.data && data.data.length > 0) {
+//       const uniqueProviders = [...new Set(data.data.map(rate => rate.provider))];
+//       console.log('📊 Available providers:', uniqueProviders);
+      
+//       const uniquePairs = [...new Set(data.data.map(rate => `${rate.from_currency}-${rate.to_currency}`))];
+//       console.log('📊 Available currency pairs:', uniquePairs.slice(0, 10));
+//     }
+
+//     console.log('data', data);
+
+//     return data;
+//   } catch (error) {
+//     console.error('❌ Exchange rate fetch error:', error);
+    
+//     if (error.message.includes('Authentication failed') && !providedToken) {
+//       console.log('🔄 Authentication failed, trying once more with fresh token...');
+//       try {
+//         const authResult = await getPCXAuthToken();
+//         if (!authResult.fromCache) {
+//           console.log('🔄 Retrying with fresh token...');
+//           return await getExchangeRates(authResult.token);
+//         }
+//       } catch (retryError) {
+//         console.error('❌ Retry with fresh token also failed:', retryError);
+//         throw retryError;
+//       }
+//     }
+    
+//     throw error;
+//   }
+// };
+
+export const getExchangeRates = async (providedToken = null, excludeOldData = true, maxAgeHours = 24) => {
   try {
     let token = providedToken;
     
@@ -99,7 +198,7 @@ export const getExchangeRates = async (providedToken = null) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ Error response body:', errorText);
+      console.error('Error response body:', errorText);
       
       let errorData;
       try {
@@ -123,7 +222,35 @@ export const getExchangeRates = async (providedToken = null) => {
     console.log('✅ Exchange rates received successfully');
     console.log('📊 Total rates received:', data.data?.length || 0);
     
-    if (data.data && data.data.length > 0) {
+    // Always filter out old data by default
+    if (excludeOldData && data.data && data.data.length > 0) {
+      const now = new Date();
+      const cutoffTime = new Date(now.getTime() - (maxAgeHours * 60 * 60 * 1000));
+      
+      // Filter out old records (keep only recent ones)
+      const recentData = data.data.filter(item => {
+        const itemDate = new Date(item.updatedAt);
+        return itemDate >= cutoffTime;
+      });
+      
+      console.log('🔄 Excluded old records automatically');
+      console.log('📊 Recent records count:', recentData.length);
+      console.log('📊 Excluded old records:', data.data.length - recentData.length);
+
+      // Update the data object with filtered results
+      data.data = recentData;
+      data.count = recentData.length;
+      
+      if (recentData.length > 0) {
+        const uniqueProviders = [...new Set(recentData.map(rate => rate.provider))];
+        console.log('📊 Active providers:', uniqueProviders);
+        
+        const uniquePairs = [...new Set(recentData.map(rate => `${rate.from_currency}-${rate.to_currency}`))];
+        console.log('📊 Available currency pairs:', uniquePairs.length);
+      } else {
+        console.log('⚠️ No recent data available within the last', maxAgeHours, 'hours');
+      }
+    } else if (data.data && data.data.length > 0) {
       const uniqueProviders = [...new Set(data.data.map(rate => rate.provider))];
       console.log('📊 Available providers:', uniqueProviders);
       
@@ -143,7 +270,7 @@ export const getExchangeRates = async (providedToken = null) => {
         const authResult = await getPCXAuthToken();
         if (!authResult.fromCache) {
           console.log('🔄 Retrying with fresh token...');
-          return await getExchangeRates(authResult.token);
+          return await getExchangeRates(authResult.token, excludeOldData, maxAgeHours);
         }
       } catch (retryError) {
         console.error('❌ Retry with fresh token also failed:', retryError);
@@ -153,6 +280,42 @@ export const getExchangeRates = async (providedToken = null) => {
     
     throw error;
   }
+};
+
+// Helper function to get only recent exchange rates (old data completely excluded)
+export const getRecentExchangeRates = async (providedToken = null, maxAgeHours = 24) => {
+  return await getExchangeRates(providedToken, true, maxAgeHours);
+};
+
+// Get all data including old records (bypass filtering)
+export const getAllExchangeRates = async (providedToken = null) => {
+  return await getExchangeRates(providedToken, false);
+};
+
+// Alternative: Standalone function to filter out old data from existing data
+export const excludeOldRates = (exchangeRateData, maxAgeHours = 24) => {
+  if (!exchangeRateData?.data || exchangeRateData.data.length === 0) {
+    return exchangeRateData;
+  }
+
+  const now = new Date();
+  const cutoffTime = new Date(now.getTime() - (maxAgeHours * 60 * 60 * 1000));
+
+  // Filter out old records (keep only recent ones)
+  const recentData = exchangeRateData.data.filter(item => {
+    const itemDate = new Date(item.updatedAt);
+    return itemDate >= cutoffTime;
+  });
+
+  return {
+    ...exchangeRateData,
+    data: recentData,
+    count: recentData.length,
+    originalCount: exchangeRateData.data.length,
+    excludedCount: exchangeRateData.data.length - recentData.length,
+    cutoffTime: cutoffTime.toISOString(),
+    maxAgeHours: maxAgeHours
+  };
 };
 
 export const getProviderExchangeRates = async (token, provider) => {

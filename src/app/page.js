@@ -1,5 +1,5 @@
-import Send from "../components/send";
-import RateEngine from "../components/test"
+// import RateEngine from "../components/RateEngine"
+import RateEngine from "./pages/RateEngine";
 
 export default function Home() {
 

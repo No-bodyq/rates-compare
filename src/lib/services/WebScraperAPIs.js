@@ -22,7 +22,7 @@ class NalaRateScraperService {
     this.retryDelay = options.retryDelay;
     this.pageTimeout = options.pageTimeout;
     this.isInitializing = false;
-    this.isServerless = options.isServerless || false; // Add serverless flag
+    this.isServerless = options.isServerless || false;
 
     this.services = {
       nala: {
