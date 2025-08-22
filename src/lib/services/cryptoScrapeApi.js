@@ -31,9 +31,7 @@ class CoinbaseRateScraperService {
       }
     };
 
-    // Coinbase supported currencies (focusing on crypto and major fiat)
     this.supportedCurrencies = [
-      // Fiat currencies
       'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'SEK', 'NOK', 'DKK',
       'NGN', 'KES', 'ZAR', 'GHS', 'UGX', 'TZS', 'INR', 'BRL', 'MXN',
       // Cryptocurrencies

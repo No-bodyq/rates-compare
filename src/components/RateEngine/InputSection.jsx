@@ -4,10 +4,45 @@ import {
     Plus,
     Minus,
 } from "lucide-react";
+
+const getCurrencySymbol = (currencyCode) => {
+  const symbols = {
+    USD: '$',
+    NGN: '₦',
+    GHS: '₵',
+    GBP: '£',
+    EUR: '€',
+    KES: 'Sh',
+    ZAR: 'R',
+    RWF: 'RF',
+    BTC: '₿',
+    ETH: 'Ξ',
+    USDC: '$',
+    BTC: '₿',
+    ETH: 'Ξ',
+    USDC: '$',
+    USDT: '$',
+    ADA: '₳',
+    XRP: 'XRP',
+    LTC: 'Ł',
+    BCH: 'BCH',
+    DOT: '●',
+    LINK: 'LINK',
+    BNB: 'BNB',
+    SOL: 'SOL',
+    MATIC: 'MATIC',
+    AVAX: 'AVAX',
+    UNI: 'UNI',
+    DOGE: 'Ð'
+  };
+  return symbols[currencyCode] || currencyCode;
+};
+
 export default function InputSection({
   sendAmount,
   handleAmountChange,
   fromCurrency,
+  formatCurrency,
   setFromCurrency,
   toCurrency,
   setToCurrency,
@@ -28,13 +63,16 @@ export default function InputSection({
   isFiatCurrency,
   isCryptocurrency,
 }) {
+  console.log('fromCurrency:', fromCurrency);
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6 shadow-sm">
       <div className="grid grid-cols-4 gap-4">
         <div className="space-y-2">
           <label className="block text-xs font-medium text-gray-700">Amount</label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{isFiatCurrency(fromCurrency) ? '$' : ''}</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+              {getCurrencySymbol(fromCurrency)}
+            </span>
             <input
               type="text"
               value={sendAmount}

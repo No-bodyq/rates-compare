@@ -91,7 +91,7 @@ export default function Header({
                 <button
                   onClick={handleManualLogin}
                   disabled={isLoading}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  className="flex whitespace-nowrap items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                 >
                   <LogIn className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
                   Log In

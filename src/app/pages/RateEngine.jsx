@@ -13,7 +13,6 @@ import BenchmarkTable from "../../components/RateEngine/BenchmarkTable";
 import ComparisonChart from "../../components/RateEngine/ComparisonChart";
 import Simulator from "../../components/RateEngine/Simulator";
 
-// Define cryptocurrency list
 const CRYPTOCURRENCIES = [
     'BTC', 'ETH', 'USDC', 'USDT', 'LTC', 'BCH', 'XRP', 'ADA', 'DOT', 'LINK',
     'UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'YFI', 'SUSHI', 'CRV', 'BAL',
@@ -82,6 +81,255 @@ export default function RateEngine() {
     const [error, setError] = useState("");
     const [isDefaultOrgValid, setIsDefaultOrgValid] = useState(null);
     const [isUserInteracted, setIsUserInteracted] = useState(false);
+
+    // Universal currency calculator function
+    // const calculateRecipientAmount = useCallback((sendAmount, rate, fromCurrency, toCurrency, provider = null) => {
+    //     const amount = parseFloat(sendAmount || 0);
+    //     const rateValue = parseFloat(rate || 0);
+
+    //     if (amount === 0 || rateValue === 0) return 0;
+
+    //     // Special handling based on provider patterns and rate values
+    //     const providerName = provider?.toLowerCase() || '';
+
+    //     // Provider-specific logic (you can expand this based on your providers)
+    //     if (providerName.includes('flutterwave') || providerName.includes('flutter')) {
+    //         // Flutterwave typically gives rates as "fromCurrency per toCurrency"
+    //         // e.g., 1607 NGN per 1 USD, so divide
+    //         return amount / rateValue;
+    //     }
+
+    //     if (providerName.includes('ngnrates') || providerName.includes('ngn')) {
+    //         // ngnrates typically gives "toCurrency per fromCurrency" 
+    //         // e.g., 0.00217 USD per 1 NGN, so multiply
+    //         return amount * rateValue;
+    //     }
+
+    //     if (providerName.includes('wise') || providerName.includes('transferwise')) {
+    //         // Wise typically gives direct conversion rates
+    //         return amount * rateValue;
+    //     }
+
+    //     if (providerName.includes('currency_api') || providerName.includes('exchange_rates_api')) {
+    //         // Most currency APIs give direct conversion rates
+    //         return amount * rateValue;
+    //     }
+
+    //     // General heuristic approach for unknown providers
+    //     // This is a fallback when we can't identify the provider pattern
+
+    //     // Method 1: Rate magnitude heuristic
+    //     // If converting from a "smaller value" currency to "larger value" currency
+    //     const fromCurrencySmaller = ['NGN', 'KES', 'UGX', 'TZS', 'RWF', 'INR', 'KRW', 'JPY', 'IDR'].includes(fromCurrency.toUpperCase());
+    //     const toCurrencyLarger = ['USD', 'EUR', 'GBP', 'CHF', 'AUD', 'CAD'].includes(toCurrency.toUpperCase());
+
+    //     if (fromCurrencySmaller && toCurrencyLarger) {
+    //         // Converting from high-value-number currency to low-value-number currency
+    //         // Rate should typically be < 1, so multiply
+    //         // If rate > 1, it's probably inverted, so divide
+    //         return rateValue < 1 ? amount * rateValue : amount / rateValue;
+    //     }
+
+    //     const fromCurrencyLarger = ['USD', 'EUR', 'GBP', 'CHF', 'AUD', 'CAD'].includes(fromCurrency.toUpperCase());
+    //     const toCurrencySmaller = ['NGN', 'KES', 'UGX', 'TZS', 'RWF', 'INR', 'KRW', 'JPY', 'IDR'].includes(toCurrency.toUpperCase());
+
+    //     if (fromCurrencyLarger && toCurrencySmaller) {
+    //         // Converting from low-value-number currency to high-value-number currency  
+    //         // Rate should typically be > 1, so multiply
+    //         // If rate < 1, it's probably inverted, so divide
+    //         return rateValue > 1 ? amount * rateValue : amount / rateValue;
+    //     }
+
+    //     // Method 2: Crypto handling
+    //     if (isCryptocurrency(fromCurrency) || isCryptocurrency(toCurrency)) {
+    //         // Crypto rates are typically very small when converting to fiat
+    //         // or very large when converting from fiat
+    //         if (isCryptocurrency(fromCurrency) && isFiatCurrency(toCurrency)) {
+    //             // BTC -> USD: rate should be large (multiply)
+    //             return amount * rateValue;
+    //         }
+    //         if (isFiatCurrency(fromCurrency) && isCryptocurrency(toCurrency)) {
+    //             // USD -> BTC: rate should be small (multiply)  
+    //             return amount * rateValue;
+    //         }
+    //         // Crypto to crypto
+    //         return amount * rateValue;
+    //     }
+
+    //     // Method 3: Fallback - use the "reasonable result" heuristic
+    //     const multiplyResult = amount * rateValue;
+    //     const divideResult = amount / rateValue;
+
+    //     // Check which result seems more reasonable
+    //     // For most currency pairs, a reasonable exchange should be between 0.001 and 10000
+    //     const multiplyReasonable = multiplyResult >= 0.001 && multiplyResult <= 10000;
+    //     const divideReasonable = divideResult >= 0.001 && divideResult <= 10000;
+
+    //     if (multiplyReasonable && !divideReasonable) {
+    //         return multiplyResult;
+    //     } else if (!multiplyReasonable && divideReasonable) {
+    //         return divideResult;
+    //     } else {
+    //         // Both or neither seem reasonable, use the smaller rate magnitude approach
+    //         return rateValue < 1 ? multiplyResult : divideResult;
+    //     }
+    // }, []);
+    // Enhanced debugging system for rate calculation issues
+    const calculateRecipientAmount = useCallback((sendAmount, rate, fromCurrency, toCurrency, provider = null) => {
+        const amount = parseFloat(sendAmount || 0);
+        const rateValue = parseFloat(rate || 0);
+
+        if (amount === 0 || rateValue === 0) return 0;
+
+        const providerName = provider?.toLowerCase() || '';
+
+        // Define expected rate ranges for common currency pairs
+        const expectedRanges = {
+            'USD_GHS': { min: 9, max: 16, description: '1 USD = 9-16 GHS' },
+            'USD_NGN': { min: 400, max: 2000, description: '1 USD = 400-2000 NGN' },
+            'USD_KES': { min: 100, max: 180, description: '1 USD = 100-180 KES' },
+            'USD_EUR': { min: 0.8, max: 1.1, description: '1 USD = 0.8-1.1 EUR' },
+            'USD_GBP': { min: 0.7, max: 0.9, description: '1 USD = 0.7-0.9 GBP' },
+            // Add reverse pairs
+            'GHS_USD': { min: 0.06, max: 0.12, description: '1 GHS = 0.06-0.12 USD' },
+            'NGN_USD': { min: 0.0005, max: 0.003, description: '1 NGN = 0.0005-0.003 USD' },
+            'KES_USD': { min: 0.005, max: 0.01, description: '1 KES = 0.005-0.01 USD' },
+            'EUR_USD': { min: 0.9, max: 1.3, description: '1 EUR = 0.9-1.3 USD' },
+            'GBP_USD': { min: 1.1, max: 1.4, description: '1 GBP = 1.1-1.4 USD' },
+        };
+
+        const pairKey = `${fromCurrency}_${toCurrency}`;
+        const expectedRange = expectedRanges[pairKey];
+
+        // Debug function
+        const debugRate = (action, originalRate, finalRate, calculation) => {
+            const emoji = action === 'CORRECT' ? '✅' : action === 'INVERTED' ? '🔄' : '⚠️';
+            console.log(`${emoji} ${provider} (${fromCurrency}→${toCurrency}): ${action}`);
+            console.log(`   Original rate: ${originalRate}`);
+            console.log(`   Final rate used: ${finalRate}`);
+            console.log(`   Expected: ${expectedRange?.description || 'No range defined'}`);
+            console.log(`   Calculation: ${amount} × ${finalRate} = ${calculation.toFixed(4)}`);
+            console.log(`   ─────────────────────────────────`);
+
+            // Add to window for easy inspection
+            if (!window.rateDebugLog) window.rateDebugLog = [];
+            window.rateDebugLog.push({
+                provider,
+                pair: `${fromCurrency}→${toCurrency}`,
+                action,
+                originalRate,
+                finalRateUsed: finalRate,
+                expected: expectedRange?.description,
+                result: calculation
+            });
+        };
+
+        let finalRate = rateValue;
+        let action = 'UNKNOWN';
+        let result;
+
+        // Check if rate is within expected range
+        if (expectedRange) {
+            const isInRange = rateValue >= expectedRange.min && rateValue <= expectedRange.max;
+            const invertedRate = 1 / rateValue;
+            const isInvertedInRange = invertedRate >= expectedRange.min && invertedRate <= expectedRange.max;
+
+            if (isInRange && !isInvertedInRange) {
+                // Rate is correct
+                finalRate = rateValue;
+                action = 'CORRECT';
+                result = amount * finalRate;
+            } else if (!isInRange && isInvertedInRange) {
+                // Rate is inverted
+                finalRate = invertedRate;
+                action = 'INVERTED';
+                result = amount * finalRate;
+            } else if (isInRange && isInvertedInRange) {
+                // Both seem valid - use provider-specific logic
+                action = 'AMBIGUOUS';
+                finalRate = getProviderSpecificRate(providerName, rateValue, fromCurrency, toCurrency);
+                result = amount * finalRate;
+            } else {
+                // Neither seems valid - flag as suspicious
+                action = 'SUSPICIOUS';
+                finalRate = rateValue; // Use as-is but flag it
+                result = amount * finalRate;
+            }
+        } else {
+            // No expected range defined - use provider-specific logic
+            finalRate = getProviderSpecificRate(providerName, rateValue, fromCurrency, toCurrency);
+            action = 'PROVIDER_LOGIC';
+            result = amount * finalRate;
+        }
+
+        debugRate(action, rateValue, finalRate, result);
+        return result;
+    }, []);
+
+    // Provider-specific rate handling
+    const getProviderSpecificRate = (providerName, rateValue, fromCurrency, toCurrency) => {
+        // Known provider patterns based on API documentation and testing
+        const providerLogic = {
+            'flutterwave': (rate, from, to) => {
+                // Flutterwave typically returns direct conversion rates
+                // But sometimes inverts for certain pairs
+                if (from === 'USD' && to === 'GHS' && rate < 5) {
+                    console.log('🔄 Flutterwave: Inverting USD→GHS rate');
+                    return 1 / rate;
+                }
+                return rate;
+            },
+
+            'ngnrates': (rate, from, to) => {
+                // ngnrates often returns inverted rates
+                if (from === 'USD' && (to === 'GHS' || to === 'NGN') && rate < 1) {
+                    console.log('🔄 ngnrates: Inverting USD→local currency rate');
+                    return 1 / rate;
+                }
+                return rate;
+            },
+
+            'wise': (rate, from, to) => {
+                // Wise is usually reliable with direct rates
+                return rate;
+            },
+
+            'currency_api': (rate, from, to) => {
+                // Most currency APIs return direct conversion rates
+                return rate;
+            },
+
+            'exchange_rates_api': (rate, from, to) => {
+                // Usually direct conversion rates
+                return rate;
+            },
+
+            'sendwave': (rate, from, to) => {
+                // Sendwave usually returns direct rates but can vary
+                return rate;
+            },
+
+            'remitly': (rate, from, to) => {
+                // Remitly usually returns direct rates
+                return rate;
+            },
+
+            'western_union': (rate, from, to) => {
+                // Western Union rates are often marked up
+                return rate;
+            }
+        };
+
+        // Try to find matching provider logic
+        for (const [key, logic] of Object.entries(providerLogic)) {
+            if (providerName.includes(key)) {
+                return logic(rateValue, fromCurrency, toCurrency);
+            }
+        }
+
+        // Default: return as-is
+        return rateValue;
+    };
 
     // Combine fetchedRates and fetchedOrgRates, filtering by currency pair and today's date for fetchedRates
     const combinedRates = useMemo(() => {
@@ -464,11 +712,13 @@ export default function RateEngine() {
             providers.forEach((provider) => {
                 const bestRate = findBestRate(fetchedRates, fromCurrency, toCurrency, parseFloat(sendAmount), provider);
                 if (bestRate) {
+                    const finalRate = parseFloat(bestRate.rate);
+
                     rateList.push({
                         name: provider,
-                        baseRate: parseFloat(bestRate.rate),
+                        baseRate: finalRate,
                         spread: 0,
-                        finalRate: parseFloat(bestRate.rate),
+                        finalRate: finalRate,
                         status: "active",
                         type: "provider",
                         fee: 0,
@@ -482,6 +732,7 @@ export default function RateEngine() {
                 }
             });
         }
+
         if (fetchedOrgs?.data?.organizations) {
             fetchedOrgs.data.organizations.forEach((org) => {
                 const orgRates = fetchedOrgRates[org.org_id];
@@ -517,6 +768,7 @@ export default function RateEngine() {
                 });
             });
         }
+
         if (!fetchedOrgs?.data?.organizations ||
             !fetchedOrgs.data.organizations.find(org => org.org_name === defaultOrg.name || org.org_id === defaultOrg.id)) {
             const orgRates = fetchedOrgRates[defaultOrg.id];
@@ -718,6 +970,12 @@ export default function RateEngine() {
                     setFetchedOrgRates={setFetchedOrgRates}
                     fetchOrgRates={fetchOrgRates}
                 />
+                {/* <RateDiagnostic
+                    combinedRates={combinedRates}
+                    fromCurrency={fromCurrency}
+                    toCurrency={toCurrency}
+                    sendAmount={sendAmount}
+                /> */}
                 <ErrorMessage error={error} />
                 <InputSection
                     sendAmount={sendAmount}
@@ -730,6 +988,7 @@ export default function RateEngine() {
                     setSelectedPCXOrg={setSelectedPCXOrg}
                     isLoadingOrgs={isLoadingOrgs}
                     fetchedOrgs={fetchedOrgs}
+                    formatCurrency={formatCurrency}
                     defaultOrg={defaultOrg}
                     isDefaultOrgValid={isDefaultOrgValid}
                     isCurrentCorridorCrypto={isCurrentCorridorCrypto}
@@ -757,6 +1016,7 @@ export default function RateEngine() {
                 {activeTab === "benchmark" && (
                     <BenchmarkTable
                         benchmarkList={benchmarkList}
+                        fromCurrency={fromCurrency}
                         selectedPCXOrg={selectedPCXOrg}
                         adjustedRate={adjustedRate}
                         isCurrentCorridorCrypto={isCurrentCorridorCrypto}
@@ -764,6 +1024,7 @@ export default function RateEngine() {
                         formatCurrency={formatCurrency}
                         toCurrency={toCurrency}
                         getPositionForRate={getPositionForRate}
+                        calculateRecipientAmount={calculateRecipientAmount}
                     />
                 )}
                 {activeTab === "comparison" && (

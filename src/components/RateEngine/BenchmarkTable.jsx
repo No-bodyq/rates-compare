@@ -10,14 +10,24 @@ export default function BenchmarkTable({
   sendAmount,
   formatCurrency,
   toCurrency,
+  fromCurrency,
   getPositionForRate,
+  calculateRecipientAmount,
 }) {
-  console.log('benchmarkList');
+  console.log('benchmarkList', benchmarkList);
+  console.log('formatCurrency', formatCurrency);
+  console.log('toCurrency', toCurrency);
+  console.log('getPositionForRate', getPositionForRate);
+  console.log('sendAmount', sendAmount);
+  console.log('fromCurrency', fromCurrency);
+  console.log('calculateRecipientAmount', calculateRecipientAmount);
+  
   const [spreadAdjustment, setSpreadAdjustment] = useState(0);
+  
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
       <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <h3 className="text-sm font-semibold text-gray-900">Complete Rate Benchmark</h3>
+        <h3 className="text-sm font-semibold text-gray-900">Complete Rate Benchmark {fromCurrency} / {toCurrency}</h3>
         <p className="text-xs text-gray-500 mt-1">Sorted by best rate for customers (highest to lowest)</p>
       </div>
       <div className="overflow-x-auto">
@@ -39,7 +49,16 @@ export default function BenchmarkTable({
             {benchmarkList.map((item, index) => {
               const isSelectedPCX = item.name === `PCX: ${selectedPCXOrg}`;
               const displayRate = isSelectedPCX ? adjustedRate : item.finalRate;
-              const recipientAmount = parseFloat(sendAmount || 0) * displayRate;
+              
+              // Use the universal currency calculator passed from parent
+              const recipientAmount = calculateRecipientAmount(
+                sendAmount, 
+                displayRate, 
+                fromCurrency, 
+                toCurrency, 
+                item.provider
+              );
+              
               return (
                 <tr
                   key={`${item.type}-${item.name}`}
@@ -78,13 +97,10 @@ export default function BenchmarkTable({
                     {isCurrentCorridorCrypto ? item.baseRate.toFixed(8) : item.baseRate.toFixed(4)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                    {isCurrentCorridorCrypto ? item.spread.toFixed(8) : item.spread.toFixed(4)}
-                    {isSelectedPCX && spreadAdjustment !== 0 && (
-                      <span className={`ml-1 text-xs ${spreadAdjustment > 0 ? "text-green-600" : "text-red-600"}`}>
-                        {spreadAdjustment > 0 ? "+" : ""}
-                        {isCurrentCorridorCrypto ? spreadAdjustment.toFixed(8) : spreadAdjustment.toFixed(4)}
-                      </span>
-                    )}
+                    {/* {
+                      <span className="text-sm font-semibold text-gray-900">{(spreadAdjustment)}</span>
+                    } */}
+                    {/* Spread adjustment column - currently empty but preserved for future use */}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="text-sm font-semibold text-gray-900">
