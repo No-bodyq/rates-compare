@@ -332,6 +332,10 @@ The Rate Compare application serves three primary user personas:
 - Timestamp comparison logic for recency
 - Deduplication applied across all data sources
 
+
+
+****************NOT INCLUDED IN ASSESSMENT ***********************************************************
+
 ## Epic 6: Authentication & Security
 
 ### Story 6.1: AWS Cognito Authentication
