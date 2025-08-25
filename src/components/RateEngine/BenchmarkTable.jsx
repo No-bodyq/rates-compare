@@ -97,10 +97,13 @@ export default function BenchmarkTable({
                     {isCurrentCorridorCrypto ? item.baseRate.toFixed(8) : item.baseRate.toFixed(4)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                    {/* {
-                      <span className="text-sm font-semibold text-gray-900">{(spreadAdjustment)}</span>
-                    } */}
-                    {/* Spread adjustment column - currently empty but preserved for future use */}
+                    {isCurrentCorridorCrypto ? item.spread.toFixed(8) : item.spread.toFixed(4)}
+                    {isSelectedPCX && spreadAdjustment !== 0 && (
+                      <span className={`ml-1 text-xs ${spreadAdjustment > 0 ? "text-green-600" : "text-red-600"}`}>
+                        {spreadAdjustment > 0 ? "+" : ""}
+                        {isCurrentCorridorCrypto ? spreadAdjustment.toFixed(8) : spreadAdjustment.toFixed(4)}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="text-sm font-semibold text-gray-900">
